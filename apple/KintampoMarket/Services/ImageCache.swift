@@ -34,11 +34,12 @@ final class ImageCache {
     }
 
     func image(for url: URL) async -> PlatformImage? {
-        let key = url as NSURL
+        let resolved = StorefrontCatalog.displayURL(url)
+        let key = resolved as NSURL
         if let hit = memory.object(forKey: key) { return hit }
 
         do {
-            let (data, response) = try await session.data(from: url)
+            let (data, response) = try await session.data(from: resolved)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
                   let image = PlatformImage(data: data)
             else { return nil }
@@ -74,7 +75,12 @@ struct CachedProductImage: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task(id: url) {
-            guard let url, image == nil else { return }
+            image = nil
+            failed = false
+            guard let url else {
+                failed = true
+                return
+            }
             let loaded = await ImageCache.shared.image(for: url)
             image = loaded
             failed = loaded == nil

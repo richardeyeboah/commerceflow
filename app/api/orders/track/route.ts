@@ -135,6 +135,7 @@ const PUBLIC_ORDER_FIELDS = [
 
 const PUBLIC_ITEM_FIELDS = [
   'id',
+  'product_id',
   'product_name',
   'product_price',
   'quantity',

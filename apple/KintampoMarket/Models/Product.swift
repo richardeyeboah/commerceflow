@@ -47,6 +47,16 @@ struct Product: Identifiable, Codable, Hashable, Sendable {
         String(format: "$%.2f", price)
     }
 
+    /// "$1.29/lb" when unit amount and measure are set.
+    var unitPriceLabel: String? {
+        guard let unitAmount, unitAmount > 0 else { return nil }
+        let measure = (unitOfMeasure ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !measure.isEmpty else { return nil }
+        let per = price / unitAmount
+        guard per > 0 else { return nil }
+        return String(format: "$%.2f/%@", per, measure)
+    }
+
     var effectiveInStock: Bool {
         if let stockQuantity, stockQuantity <= 0 { return false }
         return inStock
@@ -101,6 +111,69 @@ struct UserProfile: Codable, Sendable {
     }
 }
 
+struct OrderLineItem: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    let productId: String?
+    let productName: String
+    let productPrice: Double
+    let quantity: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case productId = "product_id"
+        case productName = "product_name"
+        case productPrice = "product_price"
+        case quantity
+    }
+}
+
+struct ProductReview: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    let reviewerName: String
+    let rating: Int
+    let comment: String?
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, rating, comment
+        case reviewerName = "reviewer_name"
+        case createdAt = "created_at"
+    }
+}
+
+struct RecipeSummary: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    let slug: String
+    let title: String
+    let summary: String?
+    let imageURL: String?
+    let prepMinutes: Int?
+    let cookMinutes: Int?
+    let servings: Int?
+    let body: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, slug, title, summary, servings
+        case imageURL = "image_url"
+        case prepMinutes = "prep_minutes"
+        case cookMinutes = "cook_minutes"
+        case body = "body_md"
+    }
+}
+
+struct RecipeIngredientLine: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    let label: String
+    let quantity: Double
+    let productId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, label, quantity
+        case productId = "product_id"
+    }
+}
+
 struct OrderTrackingResponse: Decodable {
     let order: TrackedOrder
+    let items: [OrderLineItem]?
 }

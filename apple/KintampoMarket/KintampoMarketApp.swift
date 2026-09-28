@@ -27,7 +27,11 @@ struct KintampoMarketApp: App {
                 }
                 #if os(iOS)
                 .onOpenURL { url in
-                    _ = StripeAPI.handleURLCallback(with: url)
+                    if StripeAPI.handleURLCallback(with: url) { return }
+                    AppRouter.shared.open(url)
+                }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    if let url = activity.webpageURL { AppRouter.shared.open(url) }
                 }
                 #endif
         }

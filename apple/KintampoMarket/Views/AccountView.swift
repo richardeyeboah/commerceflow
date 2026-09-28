@@ -25,6 +25,7 @@ struct AccountView: View {
                             } catch { errorMessage = error.localizedDescription }
                         }
                     }
+                    .foregroundStyle(Brand.red)
                     if let errorMessage { Text(errorMessage).font(.caption).foregroundStyle(.red) }
                     Button("Sign out", role: .destructive) {
                         Task { await auth.signOut() }
@@ -35,6 +36,7 @@ struct AccountView: View {
                     NavigationLink("Orders") { OrdersView() }
                     NavigationLink("Wishlist") { WishlistView() }
                     NavigationLink("Addresses") { AddressesView() }
+                    NavigationLink("Password") { ChangePasswordView() }
                 }
             } else {
                 Section("Sign in") {
@@ -47,12 +49,15 @@ struct AccountView: View {
                     .keyboardType(.emailAddress)
                     #endif
                     SecureField("Password", text: $password)
-                    Button(isLoading ? "Signing in…" : "Sign in") {
+                    Button("Sign in") {
                         Task {
                             isLoading = true
                             defer { isLoading = false }
                             do {
-                                try await auth.signIn(email: auth.email, password: password)
+                                try await auth.signIn(
+                                    email: auth.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+                                    password: password
+                                )
                                 password = ""
                                 errorMessage = nil
                             } catch {
@@ -60,8 +65,12 @@ struct AccountView: View {
                             }
                         }
                     }
+                    .buttonStyle(PrimaryButtonStyle())
                     .disabled(auth.email.isEmpty || password.isEmpty || isLoading)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
                     Button("Create account") { showSignUp = true }
+                    NavigationLink("Forgot password") { ForgotPasswordView() }
                     if let errorMessage {
                         Text(errorMessage).font(.caption).foregroundStyle(.red)
                     }
@@ -70,7 +79,22 @@ struct AccountView: View {
 
             Section("Browse") {
                 NavigationLink("Bundles") { BundlesView() }
+                NavigationLink("Recipes") { RecipesView() }
                 NavigationLink("Track order") { TrackOrderView() }
+            }
+
+            Section("Store info") {
+                NavigationLink("FAQ") { StoreWebPage(title: "FAQ", path: "faq") }
+                NavigationLink("Shipping") { StoreWebPage(title: "Shipping", path: "shipping") }
+                NavigationLink("Returns") { StoreWebPage(title: "Returns", path: "returns") }
+                NavigationLink("Privacy") { StoreWebPage(title: "Privacy", path: "privacy") }
+                NavigationLink("Terms") { StoreWebPage(title: "Terms", path: "terms") }
+                #if os(iOS)
+                    Button("Order alerts") { Task { await PushRegistration.registerIfPossible(ask: true) } }
+                    Text("Requires a signed Apple Developer build.")
+                        .font(.caption)
+                        .foregroundStyle(Brand.inkMuted)
+                #endif
             }
 
             Section("Store") {
@@ -80,6 +104,8 @@ struct AccountView: View {
                 Button("Open website") { openURL(AppConfig.siteURL) }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Brand.surface)
         .navigationTitle("Account")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)

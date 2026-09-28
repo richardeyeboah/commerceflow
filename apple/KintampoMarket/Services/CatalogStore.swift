@@ -1,6 +1,31 @@
 import Foundation
 import Observation
 
+enum CatalogSort: String, CaseIterable, Identifiable {
+    case newest, priceLow, priceHigh, name
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .newest: return "Newest"
+        case .priceLow: return "Price ↑"
+        case .priceHigh: return "Price ↓"
+        case .name: return "Name"
+        }
+    }
+    func apply(_ list: [Product]) -> [Product] {
+        switch self {
+        case .newest:
+            return list.sorted { $0.createdAt > $1.createdAt }
+        case .priceLow:
+            return list.sorted { $0.price < $1.price }
+        case .priceHigh:
+            return list.sorted { $0.price > $1.price }
+        case .name:
+            return list.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        }
+    }
+}
+
 /// Shared catalog — one fetch, reused across Home + Shop. Avoids the slow double-load.
 @Observable
 @MainActor
@@ -20,13 +45,14 @@ final class CatalogStore {
     }
 
     func featured(limit: Int = 12) -> [Product] {
-        Array(products.prefix(limit))
+        Array(products.filter(\.effectiveInStock).prefix(limit))
     }
 
     func filtered(
         search: String = "",
         category: String? = nil,
-        inStockOnly: Bool = false
+        inStockOnly: Bool = false,
+        sort: CatalogSort = .newest
     ) -> [Product] {
         var list = products
         if let category, !category.isEmpty {
@@ -43,7 +69,7 @@ final class CatalogStore {
                     || $0.category.lowercased().contains(q)
             }
         }
-        return list
+        return sort.apply(list)
     }
 
     /// Warm cache at launch. Skips network if still fresh unless `force`.

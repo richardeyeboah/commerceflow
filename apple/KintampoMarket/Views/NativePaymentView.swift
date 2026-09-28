@@ -7,18 +7,25 @@ struct NativePaymentView: View {
     let payment: PaymentIntentResult
     let onComplete: (String) -> Void
     @State private var sheet: PaymentSheet?
-    @State private var message = "Pay securely with card or Apple Pay."
+    @State private var message = "Pay with a card. Encrypted by Stripe."
     @State private var paymentSubmitted = false
     @State private var checking = false
     @State private var pollAttempt = 0
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("Kintampo African Market").font(.headline)
-            LabeledContent("Subtotal", value: money(payment.subtotal))
-            LabeledContent("Delivery / shipping", value: money(payment.shippingFee))
-            LabeledContent("Tax", value: money(payment.taxAmount))
-            LabeledContent("Total (including any tip)", value: money(payment.total)).font(.headline)
+            Text("Kintampo African Market")
+                .font(.headline)
+                .foregroundStyle(Brand.ink)
+            Group {
+                LabeledContent("Subtotal", value: money(payment.subtotal))
+                LabeledContent("Delivery / shipping", value: money(payment.shippingFee))
+                LabeledContent("Tax", value: money(payment.taxAmount))
+                LabeledContent("Total", value: money(payment.total))
+                    .font(.headline)
+                    .foregroundStyle(Brand.ink)
+            }
+            .monospacedDigit()
 
             if let sheet, !paymentSubmitted {
                 PaymentSheet.PaymentButton(paymentSheet: sheet, onCompletion: handleResult) {
@@ -48,6 +55,7 @@ struct NativePaymentView: View {
             Spacer()
         }
         .padding()
+        .background(Brand.surface.ignoresSafeArea())
         .navigationTitle("Payment")
         .navigationBarTitleDisplayMode(.inline)
         .task { configureSheet() }

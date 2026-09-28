@@ -17,7 +17,7 @@ struct APIClient {
         return (try? JSONDecoder().decode(Response.self, from: data))?.products ?? []
     }
 
-    func trackOrder(id: String, email: String) async throws -> TrackedOrder {
+    func trackOrder(id: String, email: String) async throws -> (TrackedOrder, [OrderLineItem]) {
         var components = URLComponents(url: baseURL.appending(path: "api/orders/track"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "id", value: id),
@@ -27,7 +27,20 @@ struct APIClient {
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw AppError.network("Order not found. Check number and email.")
         }
-        return try JSONDecoder().decode(OrderTrackingResponse.self, from: data).order
+        let decoded = try JSONDecoder().decode(OrderTrackingResponse.self, from: data)
+        return (decoded.order, decoded.items ?? [])
+    }
+
+    func forgotPassword(email: String) async throws {
+        var request = URLRequest(url: baseURL.appending(path: "api/auth/forgot-password"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["email": email, "next": "/account"])
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            throw AppError.network(message ?? "Could not send reset email.")
+        }
     }
 
     func signUp(email: String, password: String, firstName: String, lastName: String, phone: String) async throws {

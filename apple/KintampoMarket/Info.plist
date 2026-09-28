@@ -72,9 +72,15 @@
 	<string>$(SOCIAL_FACEBOOK_URL)</string>
 	<key>SOCIAL_INSTAGRAM_URL</key>
 	<string>$(SOCIAL_INSTAGRAM_URL)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>

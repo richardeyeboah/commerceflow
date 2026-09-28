@@ -270,6 +270,122 @@ actor SupabaseService {
         return try await perform(try makeRequest(url: components.url!, method: "GET"))
     }
 
+    func fetchVariants(group: String) async throws -> [Product] {
+        let g = group.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !g.isEmpty else { return [] }
+        var components = URLComponents(url: baseURL.appending(path: "rest/v1/products"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "select", value: productSelectFull),
+            URLQueryItem(name: "variant_group", value: "eq.\(g)"),
+        ]
+        let rows: [Product] = try await perform(try makeRequest(url: components.url!, method: "GET"))
+        return StorefrontCatalog.visible(rows)
+    }
+
+    func fetchRelated(category: String, excludeID: String, limit: Int = 8) async throws -> [Product] {
+        var components = URLComponents(url: baseURL.appending(path: "rest/v1/products"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "select", value: productSelectList),
+            URLQueryItem(name: "category", value: "eq.\(category)"),
+            URLQueryItem(name: "id", value: "neq.\(excludeID)"),
+            URLQueryItem(name: "in_stock", value: "eq.true"),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ]
+        let rows: [Product] = try await perform(try makeRequest(url: components.url!, method: "GET"))
+        return StorefrontCatalog.visible(rows)
+    }
+
+    func searchAllProducts(query: String, limit: Int = 80) async throws -> [Product] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard q.count >= 2 else { return [] }
+        return try await fetchProducts(search: q, limit: limit, listMode: true).filter { !StorefrontCatalog.isHidden($0) }
+    }
+
+    func fetchReviews(productID: String) async throws -> [ProductReview] {
+        var components = URLComponents(url: baseURL.appending(path: "rest/v1/product_reviews"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "select", value: "id,reviewer_name,rating,comment,created_at"),
+            URLQueryItem(name: "product_id", value: "eq.\(productID)"),
+            URLQueryItem(name: "approved", value: "eq.true"),
+            URLQueryItem(name: "order", value: "created_at.desc"),
+            URLQueryItem(name: "limit", value: "30"),
+        ]
+        return try await perform(try makeRequest(url: components.url!, method: "GET"))
+    }
+
+    func submitReview(productID: String, name: String, rating: Int, comment: String) async throws {
+        var request = try makeRequest(
+            url: baseURL.appending(path: "rest/v1/product_reviews"),
+            method: "POST",
+            authenticated: accessToken != nil
+        )
+        request.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+        var body: [String: Any] = [
+            "product_id": productID,
+            "reviewer_name": name,
+            "rating": rating,
+            "comment": comment,
+            "approved": false,
+        ]
+        if let userId = jwtSubject() { body["user_id"] = userId }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        _ = try await performRaw(request)
+    }
+
+    func fetchOrderItems(orderID: String) async throws -> [OrderLineItem] {
+        var components = URLComponents(url: baseURL.appending(path: "rest/v1/order_items"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "select", value: "id,product_id,product_name,product_price,quantity"),
+            URLQueryItem(name: "order_id", value: "eq.\(orderID)"),
+        ]
+        return try await perform(try makeRequest(url: components.url!, method: "GET", authenticated: true))
+    }
+
+    func fetchRecipes() async throws -> [RecipeSummary] {
+        var components = URLComponents(url: baseURL.appending(path: "rest/v1/recipes"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "select", value: "id,slug,title,summary,image_url,prep_minutes,cook_minutes,servings"),
+            URLQueryItem(name: "active", value: "eq.true"),
+            URLQueryItem(name: "order", value: "sort_order.asc"),
+        ]
+        return try await perform(try makeRequest(url: components.url!, method: "GET"))
+    }
+
+    func fetchRecipe(slug: String) async throws -> RecipeSummary? {
+        var components = URLComponents(url: baseURL.appending(path: "rest/v1/recipes"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "select", value: "id,slug,title,summary,body_md,image_url,prep_minutes,cook_minutes,servings"),
+            URLQueryItem(name: "slug", value: "eq.\(slug)"),
+            URLQueryItem(name: "limit", value: "1"),
+        ]
+        let rows: [RecipeSummary] = try await perform(try makeRequest(url: components.url!, method: "GET"))
+        return rows.first
+    }
+
+    func fetchRecipeIngredients(recipeID: String) async throws -> [RecipeIngredientLine] {
+        var components = URLComponents(url: baseURL.appending(path: "rest/v1/recipe_ingredients"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "select", value: "id,label,quantity,product_id"),
+            URLQueryItem(name: "recipe_id", value: "eq.\(recipeID)"),
+            URLQueryItem(name: "order", value: "sort_order.asc"),
+        ]
+        return try await perform(try makeRequest(url: components.url!, method: "GET"))
+    }
+
+    func updatePassword(_ newPassword: String) async throws {
+        guard let session = try await validSession() else { throw AppError.unauthorized }
+        var request = URLRequest(url: baseURL.appending(path: "auth/v1/user"))
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(session.accessToken)", forHTTPHeaderField: "Authorization")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["password": newPassword])
+        let (_, response) = try await self.session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw AppError.network("Could not update password.")
+        }
+    }
+
     func fetchMyOrders() async throws -> [TrackedOrder] {
         var components = URLComponents(url: baseURL.appending(path: "rest/v1/orders"), resolvingAgainstBaseURL: false)!
         components.queryItems = [

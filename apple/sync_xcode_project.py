@@ -44,6 +44,7 @@ def main() -> None:
         "ViewModels.swift",
         "ImageCache.swift",
         "StorefrontCatalog.swift",
+        "AppRouter.swift",
     }
 
     stripe_package = uid("package:stripe")
@@ -331,9 +332,9 @@ def main() -> None:
 
     for cid, name, settings in [
         (d_ios_d, "Debug", target_settings("KintampoMarket/Info.plist", "com.kintampoafricanmarket.app", "KintampoMarket", "iphoneos",
-            "\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 17.0;\n\t\t\t\tSUPPORTED_PLATFORMS = \"iphoneos iphonesimulator\";\n\t\t\t\tTARGETED_DEVICE_FAMILY = \"1,2\";")),
+            "\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n\t\t\t\tCODE_SIGN_ENTITLEMENTS = KintampoMarket/KintampoMarket.entitlements;\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 17.0;\n\t\t\t\tSUPPORTED_PLATFORMS = \"iphoneos iphonesimulator\";\n\t\t\t\tTARGETED_DEVICE_FAMILY = \"1,2\";")),
         (d_ios_r, "Release", target_settings("KintampoMarket/Info.plist", "com.kintampoafricanmarket.app", "KintampoMarket", "iphoneos",
-            "\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 17.0;\n\t\t\t\tSUPPORTED_PLATFORMS = \"iphoneos iphonesimulator\";\n\t\t\t\tTARGETED_DEVICE_FAMILY = \"1,2\";")),
+            "\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n\t\t\t\tCODE_SIGN_ENTITLEMENTS = KintampoMarket/KintampoMarket.entitlements;\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 17.0;\n\t\t\t\tSUPPORTED_PLATFORMS = \"iphoneos iphonesimulator\";\n\t\t\t\tTARGETED_DEVICE_FAMILY = \"1,2\";")),
         (d_mac_d, "Debug", target_settings("\"KintampoMarket/Info-macOS.plist\"", "com.kintampoafricanmarket.app.mac", "KintampoMarketMac", "macosx",
             "\t\t\t\tMACOSX_DEPLOYMENT_TARGET = 14.0;")),
         (d_mac_r, "Release", target_settings("\"KintampoMarket/Info-macOS.plist\"", "com.kintampoafricanmarket.app.mac", "KintampoMarketMac", "macosx",

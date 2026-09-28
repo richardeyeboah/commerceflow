@@ -25,7 +25,7 @@ final class AuthStore {
             guard let session = try await SupabaseService.shared.validSession() else {
                 accessToken = nil
                 userId = nil
-                email = ""
+                if profile != nil { email = "" }
                 profile = nil
                 return nil
             }

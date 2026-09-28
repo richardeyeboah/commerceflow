@@ -31,28 +31,64 @@ struct CheckoutView: View {
     @State private var orderDoneMessage: String?
     @AppStorage("kintampo-pending-payment") private var pendingPaymentID = ""
     @AppStorage("kintampo-pending-cart") private var pendingCart = Data()
+    @State private var savedAddresses: [SavedAddress] = []
+
+    private var trimmedEmail: String { email.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var emailValid: Bool {
+        let parts = trimmedEmail.split(separator: "@")
+        return parts.count == 2 && parts[1].contains(".") && !trimmedEmail.contains(" ")
+    }
+    private var phoneDigits: String { phone.filter(\.isNumber) }
+    private var addressValid: Bool {
+        shipping == .pickup ||
+            (!address1.trimmingCharacters(in: .whitespaces).isEmpty
+                && !city.trimmingCharacters(in: .whitespaces).isEmpty
+                && !state.trimmingCharacters(in: .whitespaces).isEmpty
+                && postalCode.filter(\.isNumber).count == 5)
+    }
+    private var validationMessage: String? {
+        if name.trimmingCharacters(in: .whitespaces).count < 2 { return "Enter your full name." }
+        if !emailValid { return "Enter a valid email for your receipt." }
+        if phoneDigits.count < 10 { return "Enter a 10-digit phone number." }
+        if shipping == .local_delivery, cart.subtotal < 25 { return "Local delivery needs a $25 minimum." }
+        if !addressValid { return "Complete the shipping address (5-digit ZIP)." }
+        return nil
+    }
+    private var canSubmit: Bool { validationMessage == nil && !cart.items.isEmpty }
 
     var body: some View {
         Form {
             if let orderDoneMessage {
                 Section {
-                    Text(orderDoneMessage)
-                        .foregroundStyle(.green)
-                    Button("Done") {
-                        dismiss()
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(Brand.success).font(.title2)
+                        Text(orderDoneMessage).font(.headline)
                     }
+                    Text("A receipt was emailed to \(trimmedEmail). Track it anytime from Account → Orders.")
+                        .font(.caption)
+                        .foregroundStyle(Brand.inkMuted)
+                    Button("Done") { dismiss() }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .listRowInsets(EdgeInsets())
                 }
             } else {
                 Section("Contact") {
                     TextField("Full name", text: $name)
+                        #if os(iOS)
+                        .textContentType(.name)
+                        .textInputAutocapitalization(.words)
+                        #endif
                     TextField("Email", text: $email)
                         #if os(iOS)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+                        .autocorrectionDisabled()
                         #endif
                     TextField("Phone", text: $phone)
                         #if os(iOS)
                         .keyboardType(.phonePad)
+                        .textContentType(.telephoneNumber)
                         #endif
                 }
 
@@ -69,14 +105,42 @@ struct CheckoutView: View {
                             }
                         }
                         TextField("Who is picking up?", text: $pickupName)
+                            #if os(iOS)
+                            .textContentType(.name)
+                            #endif
+                        Label(StoreConfig.address, systemImage: "mappin.and.ellipse")
+                            .font(.caption).foregroundStyle(Brand.inkMuted)
                     } else {
+                        if savedAddresses.count > 1 {
+                            Menu {
+                                ForEach(savedAddresses) { a in
+                                    Button(a.label ?? a.oneLine) { applyAddress(a, force: true) }
+                                }
+                            } label: {
+                                Label("Use a saved address", systemImage: "book.closed")
+                            }
+                        }
                         TextField("Address line 1", text: $address1)
+                            #if os(iOS)
+                            .textContentType(.streetAddressLine1)
+                            #endif
                         TextField("Apt / suite", text: $address2)
+                            #if os(iOS)
+                            .textContentType(.streetAddressLine2)
+                            #endif
                         TextField("City", text: $city)
+                            #if os(iOS)
+                            .textContentType(.addressCity)
+                            #endif
                         TextField("State", text: $state)
+                            #if os(iOS)
+                            .textContentType(.addressState)
+                            .textInputAutocapitalization(.characters)
+                            #endif
                         TextField("ZIP", text: $postalCode)
                             #if os(iOS)
                             .keyboardType(.numberPad)
+                            .textContentType(.postalCode)
                             #endif
                     }
                 }
@@ -107,26 +171,51 @@ struct CheckoutView: View {
                             Text("\(item.quantity)× \(item.product.name)")
                                 .lineLimit(1)
                             Spacer()
-                            Text(String(format: "$%.2f", item.lineTotal))
+                            Text(String(format: "$%.2f", item.lineTotal)).monospacedDigit()
                         }
                         .font(.subheadline)
                     }
-                    LabeledContent("Cart subtotal", value: String(format: "$%.2f", cart.subtotal))
+                    LabeledContent("Subtotal") {
+                        Text(String(format: "$%.2f", cart.subtotal)).fontWeight(.semibold).monospacedDigit()
+                    }
+                    Text("Tax and \(shipping == .pickup ? "no shipping" : "shipping") are added on the payment screen.")
+                        .font(.caption).foregroundStyle(Brand.inkMuted)
                 }
 
                 if let errorMessage {
-                    Section { Text(errorMessage).foregroundStyle(.red).font(.caption) }
+                    Section {
+                        Label(errorMessage, systemImage: "exclamationmark.circle.fill")
+                            .foregroundStyle(Brand.red).font(.caption)
+                    }
+                } else if let validationMessage, hasInteracted {
+                    Section {
+                        Text(validationMessage).foregroundStyle(Brand.inkMuted).font(.caption)
+                    }
                 }
 
                 Section {
-                    Button(isSubmitting ? "Please wait…" : (pendingPaymentID.isEmpty ? "Continue to payment" : "Check previous payment")) {
+                    Button {
+                        hasInteracted = true
+                        guard canSubmit else { return }
                         Task { await startPayment() }
+                    } label: {
+                        HStack {
+                            if isSubmitting { ProgressView().tint(.white) }
+                            Text(isSubmitting ? "Please wait…" : (pendingPaymentID.isEmpty ? "Continue to payment" : "Check previous payment"))
+                        }
                     }
+                    .buttonStyle(PrimaryButtonStyle())
                     .disabled(isSubmitting || cart.items.isEmpty)
-                    .tint(Brand.red)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    Label("Card payment, encrypted by Stripe.", systemImage: "lock.fill")
+                        .font(.caption).foregroundStyle(Brand.inkMuted)
+                        .listRowBackground(Color.clear)
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Brand.surface)
         .navigationTitle("Checkout")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -166,16 +255,21 @@ struct CheckoutView: View {
             }
         }
         .task {
-            if auth.isSignedIn, let addresses = try? await SupabaseService.shared.fetchAddresses(),
-               let preferred = addresses.first {
-                applyAddress(preferred)
+            if auth.isSignedIn, let addresses = try? await SupabaseService.shared.fetchAddresses() {
+                savedAddresses = addresses
+                if let preferred = addresses.first(where: \.isDefault) ?? addresses.first {
+                    applyAddress(preferred)
+                }
             }
         }
     }
 
-    private func applyAddress(_ a: SavedAddress) {
+    @State private var hasInteracted = false
+
+    private func applyAddress(_ a: SavedAddress, force: Bool = false) {
         if name.isEmpty { name = a.fullName }
         if phone.isEmpty { phone = a.phone ?? "" }
+        guard force || address1.isEmpty else { return }
         address1 = a.line1
         address2 = a.line2 ?? ""
         city = a.city
@@ -213,9 +307,9 @@ struct CheckoutView: View {
             }
             let checkoutItems = cart.items
             let result = try await APIClient.shared.createPaymentIntent(
-                name: name,
-                email: email,
-                phone: phone,
+                name: name.trimmingCharacters(in: .whitespaces),
+                email: trimmedEmail,
+                phone: phone.trimmingCharacters(in: .whitespaces),
                 address1: address1,
                 address2: address2,
                 city: city,
@@ -427,335 +521,3 @@ struct StripeWebView: NSViewRepresentable {
 #endif
 #endif
 
-// MARK: - Wishlist / Addresses / Bundles / Orders
-
-struct WishlistView: View {
-    @Bindable private var wishlist = WishlistStore.shared
-    @Bindable private var auth = AuthStore.shared
-
-    var body: some View {
-        Group {
-            if !auth.isSignedIn {
-                ContentUnavailableView("Sign in to save items", systemImage: "heart", description: Text("Wishlist syncs to your account."))
-            } else if wishlist.isLoading && wishlist.products.isEmpty {
-                ProgressView()
-            } else if wishlist.products.isEmpty {
-                ContentUnavailableView("No saved items", systemImage: "heart", description: Text("Tap the heart on a product."))
-            } else {
-                List {
-                    ForEach(wishlist.products) { product in
-                        NavigationLink(value: product) {
-                            HStack {
-                                CachedProductImage(url: product.primaryImageURL)
-                                    .frame(width: 48, height: 48)
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                                VStack(alignment: .leading) {
-                                    Text(product.name).lineLimit(2)
-                                    Text(product.displayPrice).foregroundStyle(Brand.red)
-                                }
-                            }
-                        }
-                        .swipeActions {
-                            Button("Remove", role: .destructive) {
-                                Task { await wishlist.toggle(product) }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("Wishlist")
-        .navigationDestination(for: Product.self) { ProductDetailView(product: $0) }
-        .task { await wishlist.refresh() }
-        .refreshable { await wishlist.refresh() }
-    }
-}
-
-struct AddressesView: View {
-    @Bindable private var auth = AuthStore.shared
-    @State private var addresses: [SavedAddress] = []
-    @State private var errorMessage: String?
-    @State private var draft = AddressDraft()
-    @State private var showAdd = false
-
-    var body: some View {
-        Group {
-            if !auth.isSignedIn {
-                ContentUnavailableView("Sign in required", systemImage: "mappin.and.ellipse")
-            } else {
-                List {
-                    ForEach(addresses) { address in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(address.label?.isEmpty == false ? address.label! : "Address")
-                                    .font(.headline)
-                                if address.isDefault {
-                                    Text("Default").font(.caption2).foregroundStyle(Brand.gold)
-                                }
-                            }
-                            Text(address.fullName)
-                            Text(address.oneLine).font(.caption).foregroundStyle(.secondary)
-                        }
-                        .swipeActions {
-                            Button("Delete", role: .destructive) {
-                                Task {
-                                    try? await SupabaseService.shared.deleteAddress(id: address.id)
-                                    await reload()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("Addresses")
-        .toolbar {
-            if auth.isSignedIn {
-                Button { showAdd = true } label: { Image(systemName: "plus") }
-            }
-        }
-        .sheet(isPresented: $showAdd) {
-            NavigationStack {
-                Form {
-                    TextField("Label", text: $draft.label)
-                    TextField("Full name", text: $draft.fullName)
-                    TextField("Phone", text: $draft.phone)
-                    TextField("Line 1", text: $draft.line1)
-                    TextField("Line 2", text: $draft.line2)
-                    TextField("City", text: $draft.city)
-                    TextField("State", text: $draft.state)
-                    TextField("ZIP", text: $draft.postalCode)
-                    Toggle("Default address", isOn: $draft.isDefault)
-                    if let errorMessage { Text(errorMessage).foregroundStyle(.red) }
-                }
-                .navigationTitle("Add address")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { showAdd = false } }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") { Task { await save() } }
-                    }
-                }
-            }
-        }
-        .task { await reload() }
-    }
-
-    private func reload() async {
-        guard auth.isSignedIn else { return }
-        addresses = (try? await SupabaseService.shared.fetchAddresses()) ?? []
-    }
-
-    private func save() async {
-        errorMessage = nil
-        let address = SavedAddress(
-            id: UUID().uuidString,
-            userId: auth.userId,
-            label: draft.label,
-            fullName: draft.fullName,
-            phone: draft.phone,
-            line1: draft.line1,
-            line2: draft.line2,
-            city: draft.city,
-            state: draft.state,
-            country: "United States",
-            postalCode: draft.postalCode,
-            isDefault: draft.isDefault
-        )
-        do {
-            try await SupabaseService.shared.saveAddress(address)
-            showAdd = false
-            draft = AddressDraft()
-            await reload()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-}
-
-private struct AddressDraft {
-    var label = "Home"
-    var fullName = ""
-    var phone = ""
-    var line1 = ""
-    var line2 = ""
-    var city = "Columbus"
-    var state = "OH"
-    var postalCode = ""
-    var isDefault = true
-}
-
-struct BundlesView: View {
-    @State private var bundles: [ProductBundle] = []
-    @State private var errorMessage: String?
-
-    var body: some View {
-        Group {
-            if let errorMessage, bundles.isEmpty {
-                ContentUnavailableView("Could not load", systemImage: "shippingbox", description: Text(errorMessage))
-            } else if bundles.isEmpty {
-                ContentUnavailableView("No bundles yet", systemImage: "shippingbox")
-            } else {
-                List(bundles) { bundle in
-                    NavigationLink(value: bundle) {
-                        HStack(spacing: 12) {
-                            CachedProductImage(url: bundle.image)
-                                .frame(width: 56, height: 56)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                            VStack(alignment: .leading) {
-                                Text(bundle.name).font(.headline)
-                                if bundle.discountPercent > 0 {
-                                    Text("\(Int(bundle.discountPercent))% off")
-                                        .font(.caption)
-                                        .foregroundStyle(Brand.gold)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("Bundles")
-        .navigationDestination(for: ProductBundle.self) { BundleDetailView(bundle: $0) }
-        .task {
-            do { bundles = try await SupabaseService.shared.fetchBundles() }
-            catch { errorMessage = error.localizedDescription }
-        }
-    }
-}
-
-struct BundleDetailView: View {
-    let bundle: ProductBundle
-    @State private var products: [(Product, Int)] = []
-    @State private var added = false
-
-    var body: some View {
-        List {
-            Section {
-                if let desc = bundle.description, !desc.isEmpty {
-                    Text(desc)
-                }
-            }
-            Section("Includes") {
-                ForEach(products, id: \.0.id) { product, qty in
-                    HStack {
-                        Text("\(qty)× \(product.name)")
-                        Spacer()
-                        Text(product.displayPrice).foregroundStyle(Brand.red)
-                    }
-                }
-            }
-            Section {
-                Button(added ? "Added to cart" : "Add bundle to cart") {
-                    for (product, qty) in products {
-                        CartStore.shared.add(product, quantity: qty)
-                    }
-                    added = true
-                }
-                .tint(Brand.red)
-                .disabled(products.isEmpty)
-            }
-        }
-        .navigationTitle(bundle.name)
-        .task {
-            let rows = (try? await SupabaseService.shared.fetchBundleItems(bundleID: bundle.id)) ?? []
-            let ids = rows.map(\.productId)
-            let fetched = (try? await SupabaseService.shared.fetchProductsByIDs(ids)) ?? []
-            let map = Dictionary(uniqueKeysWithValues: fetched.map { ($0.id, $0) })
-            products = rows.compactMap { row in
-                guard let p = map[row.productId] else { return nil }
-                return (p, row.quantity)
-            }
-        }
-    }
-}
-
-struct OrdersView: View {
-    @Bindable private var auth = AuthStore.shared
-    @State private var orders: [TrackedOrder] = []
-    @State private var loadError: String?
-
-    var body: some View {
-        Group {
-            if !auth.isSignedIn {
-                ContentUnavailableView("Sign in to see orders", systemImage: "list.bullet.rectangle")
-            } else if let loadError {
-                ContentUnavailableView("Could not load orders", systemImage: "exclamationmark.triangle", description: Text(loadError))
-            } else if orders.isEmpty {
-                ContentUnavailableView("No orders yet", systemImage: "list.bullet.rectangle")
-            } else {
-                List(orders, id: \.id) { order in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(order.displayNumber).font(.headline)
-                        Text(order.status.replacingOccurrences(of: "_", with: " ").capitalized)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if let total = order.totalAmount {
-                            Text(String(format: "$%.2f", total)).foregroundStyle(Brand.red)
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("Orders")
-        .task { await reload() }
-        .refreshable { await reload() }
-    }
-    private func reload() async {
-        loadError = nil
-        do {
-            guard try await auth.validAccessToken() != nil else { orders = []; return }
-            orders = try await SupabaseService.shared.fetchMyOrders()
-        } catch { loadError = error.localizedDescription }
-    }
-
-}
-
-struct SignUpView: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var firstName = ""
-    @State private var lastName = ""
-    @State private var email = ""
-    @State private var phone = ""
-    @State private var password = ""
-    @State private var errorMessage: String?
-    @State private var isLoading = false
-    @State private var termsAccepted = false
-
-    var body: some View {
-        Form {
-            TextField("First name", text: $firstName)
-            TextField("Last name", text: $lastName)
-            TextField("Email", text: $email)
-            TextField("Phone", text: $phone)
-            SecureField("Password", text: $password)
-            Text("Use 8 or more characters with uppercase, lowercase, a number, and a symbol.")
-                .font(.caption).foregroundStyle(.secondary)
-            Toggle("I agree to the Terms and Privacy Policy", isOn: $termsAccepted)
-            Link("Terms", destination: AppConfig.siteURL.appending(path: "terms"))
-            Link("Privacy Policy", destination: AppConfig.siteURL.appending(path: "privacy"))
-            if let errorMessage { Text(errorMessage).foregroundStyle(.red).font(.caption) }
-            Button(isLoading ? "Creating…" : "Create account") {
-                Task {
-                    isLoading = true
-                    defer { isLoading = false }
-                    do {
-                        try await AuthStore.shared.signUp(
-                            email: email,
-                            password: password,
-                            firstName: firstName,
-                            lastName: lastName,
-                            phone: phone
-                        )
-                        dismiss()
-                    } catch {
-                        errorMessage = error.localizedDescription
-                    }
-                }
-            }
-            .disabled(isLoading || !termsAccepted || email.isEmpty || password.count < 8 || firstName.isEmpty || lastName.isEmpty)
-        }
-        .navigationTitle("Sign up")
-    }
-
-
-}

@@ -18,7 +18,10 @@ struct TrackOrderView: View {
                 Button(tracker.isLoading ? "Looking up…" : "Track order") {
                     Task { await tracker.track() }
                 }
+                .buttonStyle(PrimaryButtonStyle())
                 .disabled(tracker.orderID.isEmpty || tracker.email.isEmpty || tracker.isLoading)
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
             }
 
             if let error = tracker.errorMessage {
@@ -34,14 +37,28 @@ struct TrackOrderView: View {
                     LabeledContent("Order", value: order.displayNumber)
                     LabeledContent("Status", value: order.status.replacingOccurrences(of: "_", with: " ").capitalized)
                     if let total = order.totalAmount {
-                        LabeledContent("Total", value: String(format: "$%.2f", total))
+                        LabeledContent("Total") {
+                            Text(String(format: "$%.2f", total)).foregroundStyle(Brand.red).fontWeight(.semibold)
+                        }
                     }
                     if let tracking = order.trackingNumber, !tracking.isEmpty {
                         LabeledContent("Tracking", value: tracking)
                     }
                 }
+                if !tracker.items.isEmpty {
+                    Section("Items") {
+                        ForEach(tracker.items) { item in
+                            Text("\(item.quantity)× \(item.productName)")
+                        }
+                        NavigationLink("Order details") {
+                            OrderDetailView(order: order, presetItems: tracker.items)
+                        }
+                    }
+                }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Brand.surface)
         .navigationTitle("Track")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)

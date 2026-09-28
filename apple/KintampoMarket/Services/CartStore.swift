@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+#if os(iOS)
+import UIKit
+#endif
 
 @Observable
 @MainActor
@@ -20,6 +23,9 @@ final class CartStore {
 
     func add(_ product: Product, quantity: Int = 1) {
         guard quantity > 0, product.maxCartQuantity > 0 else { return }
+        #if os(iOS)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        #endif
         if let index = items.firstIndex(where: { $0.product.id == product.id }) {
             items[index] = CartItem(product: product, quantity: min(product.maxCartQuantity, items[index].quantity + min(quantity, 99)))
         } else {

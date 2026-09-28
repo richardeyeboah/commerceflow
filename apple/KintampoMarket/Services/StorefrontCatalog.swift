@@ -25,4 +25,18 @@ enum StorefrontCatalog {
     static func publicProductURL(id: String) -> URL {
         AppConfig.siteURL.appending(path: "products").appending(path: id)
     }
+
+    /// Rewrite public storage URLs through the storefront proxy so CSP-safe photos load in-app.
+    static func displayURL(_ url: URL) -> URL {
+        let host = url.host?.lowercased() ?? ""
+        let path = url.path
+        guard host.hasSuffix("supabase.co"),
+              let marker = path.range(of: "/product-images/")
+        else { return url }
+        let objectPath = String(path[marker.upperBound...])
+        return AppConfig.siteURL
+            .appending(path: "media")
+            .appending(path: "product-images")
+            .appending(path: objectPath)
+    }
 }
