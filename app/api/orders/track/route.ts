@@ -1,3 +1,4 @@
+import { limitPublicRequest } from '@/lib/security/request-rate-limit'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -6,6 +7,7 @@ import { parseOrderRef } from '@/lib/orders/order-number'
 import { normalizeGuestEmail } from '@/lib/orders/guest-checkout'
 
 export async function GET(req: NextRequest) {
+
   const idRaw = req.nextUrl.searchParams.get('id')?.trim()
   const emailRaw = req.nextUrl.searchParams.get('email')?.trim().toLowerCase()
 
@@ -26,7 +28,10 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    let query = supabaseAdmin.from('orders').select('*').ilike('customer_email', email)
+    const limited = await limitPublicRequest(req, 'tracking', 30)
+    if (limited) return limited
+
+    let query = supabaseAdmin.from('orders').select('*').eq('customer_email', email)
     query = ref.type === 'uuid' ? query.eq('id', ref.value) : query.eq('order_number', ref.value)
     const { data, error: orderError } = await query.maybeSingle()
     if (orderError || !data) {
@@ -38,7 +43,7 @@ export async function GET(req: NextRequest) {
       .from('orders')
       .select('*')
       .eq('user_id', user.id)
-      .ilike('customer_email', emailRaw)
+      .eq('customer_email', emailRaw)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -80,7 +85,7 @@ export async function GET(req: NextRequest) {
       .eq('order_id', order.id),
     supabaseAdmin
       .from('order_status_logs')
-      .select('id,from_status,to_status,changed_at,changed_by,note')
+      .select('id,from_status,to_status,changed_at')
       .eq('order_id', order.id)
       .order('changed_at', { ascending: true }),
   ])

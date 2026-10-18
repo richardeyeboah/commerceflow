@@ -1,3 +1,4 @@
+import { signedShippingLabel } from '@/lib/shipping/private-label'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -79,6 +80,7 @@ export default async function AdminOrderDetailPage({
   const pm = (order.payment_method as PaymentMethod | null | undefined) ?? 'cod'
   const paymentLabel = PAYMENT_LABEL[pm] ?? pm
   const orderRecord = order as Record<string, unknown>
+  const privateLabelUrl = await signedShippingLabel(typeof orderRecord.shipping_label_url === 'string' ? orderRecord.shipping_label_url : null).catch(() => null)
   const paymentStatus = normalizePaymentStatus(orderRecord.payment_status)
   const orderSource = normalizeOrderSource(orderRecord.order_source)
   const paidAt =
@@ -266,6 +268,7 @@ export default async function AdminOrderDetailPage({
               isLocalDelivery={isLocalDelivery}
             />
             <div>
+              {orderRecord.inventory_review === true && <p role="alert" className="error mb-4">Stock changed during checkout. Verify available quantities and resolve any shortage before fulfillment.</p>}
               <h2 className="admin-section-title">Ship this order</h2>
               <p className="mt-1 text-sm text-earth-500">Create a label or add tracking.</p>
               <div className="mt-4">
@@ -279,11 +282,7 @@ export default async function AdminOrderDetailPage({
                   shippoConfigured={isShippoConfigured()}
                   mailClass={uspsConfig.mailClass}
                   defaultParcel={defaultParcel}
-                  initialLabelUrl={
-                    typeof orderRecord.shipping_label_url === 'string'
-                      ? orderRecord.shipping_label_url
-                      : null
-                  }
+                  initialLabelUrl={privateLabelUrl}
                   initialTracking={order.tracking_number}
                   initialCarrier={
                     typeof orderRecord.shipping_carrier === 'string'

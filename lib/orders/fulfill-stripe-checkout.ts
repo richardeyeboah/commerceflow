@@ -1,3 +1,4 @@
+import { recordOrder } from '@/lib/orders/record-order'
 import type Stripe from 'stripe'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { sendOrderEmails } from '@/lib/email/send-order-emails'
@@ -25,7 +26,9 @@ export async function fulfillOrderFromStripeSession(sessionId: string): Promise<
     .maybeSingle()
 
   if (existing?.id) {
-    return { orderId: existing.id, created: false }
+    const { count, error } = await supabaseAdmin.from('order_items').select('id', { count: 'exact', head: true }).eq('order_id', existing.id)
+    if (error) throw new Error(error.message)
+    if (count) return { orderId: existing.id, created: false }
   }
 
   const session = await stripe.checkout.sessions.retrieve(sessionId)
@@ -35,7 +38,7 @@ export async function fulfillOrderFromStripeSession(sessionId: string): Promise<
     return { orderId: '', created: false }
   }
 
-  const lineItemsRes = await stripe.checkout.sessions.listLineItems(sessionId, {
+  const lineItemsRes = stripe.checkout.sessions.listLineItems(sessionId, {
     limit: 100,
     expand: ['data.price.product'],
   })
@@ -60,7 +63,8 @@ export async function fulfillOrderFromStripeSession(sessionId: string): Promise<
     throw new Error('Missing customer email on Checkout Session')
   }
 
-  const lineItems = lineItemsRes.data ?? []
+  const lineItems: Stripe.LineItem[] = []
+  for await (const line of lineItemsRes) lineItems.push(line)
   const orderItems: AuthoritativeOrderItem[] = []
   let shippingFee = 0
   let taxAmount = 0
@@ -100,7 +104,7 @@ export async function fulfillOrderFromStripeSession(sessionId: string): Promise<
   const subtotal = orderItems.reduce((s, i) => s + i.subtotal, 0)
   const totalFromStripe = (session.amount_total ?? 0) / 100
   const computedTotal = Number((subtotal + shippingFee + taxAmount).toFixed(2))
-  if (Math.abs(computedTotal - totalFromStripe) > 0.02) {
+  if (session.currency !== 'usd' || Math.round(computedTotal * 100) !== Math.round(totalFromStripe * 100)) {
     console.error('[stripe] total mismatch', { computedTotal, totalFromStripe, sessionId })
     throw new Error('Order total mismatch — manual review required')
   }
@@ -110,9 +114,7 @@ export async function fulfillOrderFromStripeSession(sessionId: string): Promise<
       ? session.payment_intent
       : session.payment_intent?.id ?? null
 
-  const { data: order, error: orderError } = await supabaseAdmin
-    .from('orders')
-    .insert({
+  const { order, created } = await recordOrder({
       customer_name: customerName,
       customer_email: customerEmail,
       customer_phone: customerPhone,
@@ -133,53 +135,8 @@ export async function fulfillOrderFromStripeSession(sessionId: string): Promise<
       user_id: userId,
       stripe_checkout_session_id: sessionId,
       stripe_payment_intent_id: paymentIntentId,
-    })
-    .select()
-    .single()
-
-  if (orderError || !order) {
-    if (
-      orderError?.code === '23505' ||
-      /duplicate key|unique constraint/i.test(orderError?.message ?? '')
-    ) {
-      const { data: dup } = await supabaseAdmin
-        .from('orders')
-        .select('id')
-        .eq('stripe_checkout_session_id', sessionId)
-        .maybeSingle()
-      if (dup?.id) return { orderId: dup.id, created: false }
-    }
-    throw new Error(orderError?.message ?? 'Order insert failed')
-  }
-
-  const { error: itemsError } = await supabaseAdmin.from('order_items').insert(
-    orderItems.map((item) => ({
-      order_id: order.id,
-      ...item,
-    }))
-  )
-
-  if (itemsError) {
-    console.error('[stripe] order_items insert failed', itemsError)
-    throw new Error(itemsError.message)
-  }
-
-  const { error: logError } = await supabaseAdmin.from('order_status_logs').insert({
-    order_id: order.id,
-    from_status: null,
-    to_status: 'ordered',
-    changed_by: 'stripe_webhook',
-    note: 'Paid via Stripe — order recorded after checkout.session.completed',
-  })
-
-  if (
-    logError &&
-    !/relation .* does not exist|could not find the table|column .* does not exist|could not find the .* column/i.test(
-      logError.message
-    )
-  ) {
-    console.error('[stripe] order_status_logs insert warning:', logError)
-  }
+    }, orderItems)
+  if (!created) return { orderId: order.id, created: false }
 
   try {
     await sendOrderEmails(

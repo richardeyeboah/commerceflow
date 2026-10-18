@@ -13,6 +13,7 @@ function route(path, mocks) {
   const module = { exports: {} }
   const load = name => {
     if (name in mocks) return mocks[name]
+    if (name === '@/lib/security/request-rate-limit') return { limitPublicRequest: async () => null }
     if (name.startsWith('@/')) return {}
     return require(name)
   }

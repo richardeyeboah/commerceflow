@@ -22,7 +22,10 @@
     "test:e2e:ci": "next build && playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "test": "node --test scripts/tests/*.test.cjs",
+    "test:logic": "PLAYWRIGHT_SKIP_WEBSERVER=1 playwright test tests/order-logic.spec.ts tests/partial-refund.spec.ts tests/sales-tax.spec.ts tests/receipt-pdf.spec.ts tests/pickup-ticket-pdf.spec.ts",
+    "test:smoke": "playwright test tests/admin-api.spec.ts tests/checkout.spec.ts --workers=1"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^6.1.0",
@@ -36,7 +39,7 @@
     "lucide-react": "^1.16.0",
     "luxon": "^3.7.2",
     "next": "^16.2.6",
-    "nodemailer": "^8.0.7",
+    "nodemailer": "^10.1.7",
     "postmark": "^4.0.7",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -49,6 +52,7 @@
     "@img/sharp-linux-x64": "^0.35.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
     "@imgly/background-removal-node": "^1.4.5",
     "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",

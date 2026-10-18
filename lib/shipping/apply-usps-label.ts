@@ -1,3 +1,4 @@
+import { signedShippingLabel } from '@/lib/shipping/private-label'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { sendOrderStatusEmail } from '@/lib/email/send-order-emails'
 import { normalizeOrderStatus, ORDER_STATUS_TIMESTAMP_COLUMN, requiresShippingLabel } from '@/lib/order-status'
@@ -15,8 +16,7 @@ async function uploadLabelPdf(orderId: string, trackingNumber: string, pdf: Buff
     return null
   }
 
-  const { data } = supabaseAdmin.storage.from('shipping-labels').getPublicUrl(path)
-  return data.publicUrl ?? null
+  return `storage://shipping-labels/${path}`
 }
 
 export type ApplyLabelOptions = {
@@ -129,5 +129,5 @@ export async function applyUspsLabelToOrder(
     }
   }
 
-  return { ok: true, labelUrl, customerNotified }
+  return { ok: true, labelUrl: await signedShippingLabel(labelUrl), customerNotified }
 }

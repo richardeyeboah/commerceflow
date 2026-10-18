@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 
@@ -12,18 +12,20 @@ export function ManualRefundButton({
   amount: number
 }) {
   const router = useRouter()
+  const requestKey = useRef<string | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [reason, setReason] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   async function handleRefund() {
+    requestKey.current ??= crypto.randomUUID()
     setLoading(true)
     setError('')
     try {
       const res = await fetch(`/api/admin/orders/${orderId}/manual-refund`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestKey.current },
         body: JSON.stringify({ reason }),
       })
       if (!res.ok) {

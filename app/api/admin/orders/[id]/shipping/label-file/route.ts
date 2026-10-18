@@ -1,3 +1,4 @@
+import { shippingLabelPath } from '@/lib/shipping/private-label'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { assertSameOrigin } from '@/lib/security/same-origin'
@@ -36,12 +37,13 @@ export async function GET(
     return NextResponse.json({ error: 'No label PDF on this order yet.' }, { status: 404 })
   }
 
-  const upstream = await fetch(labelUrl)
-  if (!upstream.ok) {
-    return NextResponse.json({ error: 'Could not fetch label PDF.' }, { status: 502 })
+  let path: string
+  try { path = shippingLabelPath(labelUrl) } catch {
+    return NextResponse.json({ error: 'Label requires migration to private storage.' }, { status: 409 })
   }
-
-  const bytes = Buffer.from(await upstream.arrayBuffer())
+  const { data: pdf, error: downloadError } = await supabaseAdmin.storage.from('shipping-labels').download(path)
+  if (downloadError || !pdf) return NextResponse.json({ error: 'Could not fetch label PDF.' }, { status: 502 })
+  const bytes = Buffer.from(await pdf.arrayBuffer())
   const tracking =
     typeof order.tracking_number === 'string' && order.tracking_number
       ? order.tracking_number

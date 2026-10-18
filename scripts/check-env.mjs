@@ -104,7 +104,7 @@ const checks = [
       { key: 'USPS API (optional one-click labels)', ok: set('USPS_API_CLIENT_ID') && set('USPS_API_CLIENT_SECRET') && set('USPS_EPS_ACCOUNT_NUMBER') && set('USPS_CRID') && set('USPS_MID'), required: false },
       { key: 'SHIP_FROM address (packing slips)', ok: set('SHIP_FROM_STREET1') && set('SHIP_FROM_ZIP'), required: false },
       { key: 'Twilio SMS (all 4 vars)', ok: set('TWILIO_ACCOUNT_SID') && set('TWILIO_AUTH_TOKEN') && set('TWILIO_FROM_NUMBER') && set('MERCHANT_ALERT_PHONE'), required: false },
-      { key: 'Upstash (admin rate limit)', ok: set('UPSTASH_REDIS_REST_URL') && set('UPSTASH_REDIS_REST_TOKEN'), required: false },
+      { key: 'Upstash (admin rate limit)', ok: set('UPSTASH_REDIS_REST_URL') && set('UPSTASH_REDIS_REST_TOKEN'), required: isProd },
     ],
   },
 ]

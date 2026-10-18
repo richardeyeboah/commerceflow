@@ -1,3 +1,4 @@
+import { limitPublicRequest } from '@/lib/security/request-rate-limit'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -49,6 +50,9 @@ export const runtime = 'nodejs'
  * without browser CSRF (Bearer JWT optional for signed-in users).
  */
 export async function POST(req: NextRequest) {
+  const limited = await limitPublicRequest(req, 'checkout', 30)
+  if (limited) return limited
+
   try {
     const { url, anonKey, configured } = getSupabasePublicConfig()
     if (!configured || !url || !anonKey) {
@@ -152,7 +156,10 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const sanitizedItems = sanitizeCartItems(cartItems)
+    let sanitizedItems: ReturnType<typeof sanitizeCartItems>
+    try { sanitizedItems = sanitizeCartItems(cartItems) } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Invalid cart.' }, { status: 400 })
+    }
     if (sanitizedItems.length === 0) {
       return NextResponse.json({ error: 'Your cart is empty or invalid.' }, { status: 400 })
     }
@@ -312,6 +319,7 @@ export async function POST(req: NextRequest) {
     }
 
     const payload: CheckoutSnapshotPayload = {
+      quote: totals,
       items: sanitizedItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
       customer_name: String(name).trim(),
       customer_phone: phoneTrim,

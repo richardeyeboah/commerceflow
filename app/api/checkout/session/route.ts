@@ -1,3 +1,6 @@
+import { limitPublicRequest } from '@/lib/security/request-rate-limit'
+import { checkLocalDeliveryEligibility } from '@/lib/delivery/local-delivery-eligibility'
+import { LOCAL_DELIVERY_MIN_SUBTOTAL } from '@/lib/shipping'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
@@ -28,6 +31,9 @@ import { maxCartQuantity } from '@/lib/product-pricing'
 export const runtime = 'nodejs'
 
 export async function POST(req: NextRequest) {
+  const limited = await limitPublicRequest(req, 'checkout', 30)
+  if (limited) return limited
+
   const originCheck = assertSameOrigin(req)
   if (!originCheck.ok) return originCheck.response
 
@@ -82,7 +88,10 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const sanitizedItems = sanitizeCartItems(cartItems)
+    let sanitizedItems: ReturnType<typeof sanitizeCartItems>
+    try { sanitizedItems = sanitizeCartItems(cartItems) } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Invalid cart.' }, { status: 400 })
+    }
     if (sanitizedItems.length === 0) {
       return NextResponse.json({ error: 'Your cart is empty or invalid.' }, { status: 400 })
     }
@@ -195,6 +204,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    if (shipping_method === 'local_delivery') {
+      if (totals.subtotal < LOCAL_DELIVERY_MIN_SUBTOTAL) return NextResponse.json({ error: 'Local delivery minimum not met.' }, { status: 400 })
+      const eligibility = await checkLocalDeliveryEligibility({ ...shippingAddress, country: normalizedCountry })
+      if (!eligibility.ok || !eligibility.eligible) return NextResponse.json({ error: 'Address is outside the local delivery area.' }, { status: 400 })
+    }
     const addressLine = formatAddressLine(shippingAddress)
 
     const stripeKey = process.env.STRIPE_SECRET_KEY?.trim()

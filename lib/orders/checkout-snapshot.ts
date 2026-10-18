@@ -1,6 +1,10 @@
+import type { CheckoutTotals } from '@/lib/checkout-totals'
+
 /** Stored in checkout_snapshots.payload — rebuilt server-side with DB prices on fulfill */
 export type CheckoutSnapshotPayload = {
   items: { productId: string; quantity: number }[]
+  /** Immutable server quote. Old snapshots use a compatibility path with reconciliation. */
+  quote?: CheckoutTotals
   customer_name: string
   customer_phone: string
   address_line: string

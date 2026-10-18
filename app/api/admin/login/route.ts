@@ -75,15 +75,6 @@ export async function POST(req: NextRequest) {
   if (supplied.length === 0 || !constantTimeEquals(supplied, expectedNorm)) {
     if (process.env.NODE_ENV === 'production' && !isAdminLoginRateLimitDisabled()) {
       await recordFailedLogin(ip)
-    } else {
-      const maskedSupplied =
-        supplied.length === 0
-          ? '(empty)'
-          : `${supplied[0]}…${supplied[supplied.length - 1]} len=${supplied.length}`
-      const maskedExpected = `${expectedNorm[0]}…${expectedNorm[expectedNorm.length - 1]} len=${expectedNorm.length}`
-      console.warn(
-        `[admin-login] FAIL ip=${ip} supplied=${maskedSupplied} expected=${maskedExpected}`
-      )
     }
     return NextResponse.json({ error: 'Invalid password.' }, { status: 401 })
   }

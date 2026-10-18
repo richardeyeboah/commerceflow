@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,17 +12,19 @@ export function RefundButton({ orderId, maxAmount }: { orderId: string; maxAmoun
   const [reason, setReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const requestKey = useRef<string | null>(null)
   const [done, setDone] = useState(false)
 
   async function refund(e: React.FormEvent) {
     e.preventDefault()
     if (!confirm(`Refund $${amount} for order ${orderId}? This cannot be undone.`)) return
+    requestKey.current ??= crypto.randomUUID()
     setBusy(true)
     setError('')
     try {
       const res = await fetch(`/api/admin/orders/${orderId}/refund`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestKey.current },
         body: JSON.stringify({ amount: parseFloat(amount), reason }),
       })
       const data = await res.json().catch(() => ({}))
@@ -61,7 +63,7 @@ export function RefundButton({ orderId, maxAmount }: { orderId: string; maxAmoun
             min="0.01"
             max={maxAmount}
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onChange={(e) => { requestKey.current = null; setAmount(e.target.value) }}
             required
           />
         </div>
@@ -73,7 +75,7 @@ export function RefundButton({ orderId, maxAmount }: { orderId: string; maxAmoun
             id="refund-reason"
             type="text"
             value={reason}
-            onChange={(e) => setReason(e.target.value)}
+            onChange={(e) => { requestKey.current = null; setReason(e.target.value) }}
           />
         </div>
       </div>
