@@ -18,22 +18,22 @@ export type AuthoritativeOrderItem = {
   product_price: number
   quantity: number
   subtotal: number
+  tax_amount?: number
 }
 
 export function sanitizeCartItems(items: CartItem[]) {
-  return items
-    .map((item) => ({
-      productId: item?.product?.id,
-      quantity: Number(item?.quantity ?? 0),
-    }))
-    .filter(
-      (item): item is SanitizedCartLine =>
-        typeof item.productId === 'string' &&
-        item.productId.trim().length > 0 &&
-        Number.isInteger(item.quantity) &&
-        item.quantity > 0 &&
-        item.quantity <= 99
-    )
+  const quantities = new Map<string, number>()
+  for (const item of items) {
+    const productId = item?.product?.id?.trim()
+    const quantity = Number(item?.quantity ?? 0)
+    if (!productId || !Number.isInteger(quantity) || quantity < 1 || quantity > 99) {
+      throw new Error('Each cart line must contain a product and quantity from 1 to 99.')
+    }
+    const combined = (quantities.get(productId) ?? 0) + quantity
+    if (combined > 99) throw new Error('Maximum quantity per product is 99.')
+    quantities.set(productId, combined)
+  }
+  return [...quantities].map(([productId, quantity]) => ({ productId, quantity }))
 }
 
 export function buildAuthoritativeOrderItems(

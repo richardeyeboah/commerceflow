@@ -1,22 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Stripe from 'stripe'
 import { requireAdminApi } from '@/lib/auth/require-admin-api'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { assertSameOrigin } from '@/lib/security/same-origin'
-import { normalizeOrderStatus } from '@/lib/order-status'
 import { getStoreSalesTaxRate } from '@/lib/tax/sales-tax'
 import {
   computeShortfallRefund,
-  describeShortLines,
   type ShortfallLineInput,
 } from '@/lib/orders/partial-refund'
-import { sendShortfallEmail } from '@/lib/email/send-order-emails'
+import { executeRefund, findRefundOperation, prepareRefund, refundRequestKey } from '@/lib/orders/refund-operation'
 
 type IncomingLine = { itemId?: unknown; fulfilledQuantity?: unknown }
-
-function isMissingColumn(message: string): boolean {
-  return /column .* does not exist|could not find the .* column/i.test(message)
-}
 
 /**
  * Record what was actually handed over and refund the difference.
@@ -44,6 +37,13 @@ export async function POST(
 
     if (!incoming.length) {
       return NextResponse.json({ error: 'No item quantities were provided.' }, { status: 400 })
+    }
+
+    const key = preview ? null : refundRequestKey(req)
+    const fingerprint = JSON.stringify({ reason, lines: [...incoming].sort((a,b) => String(a.itemId).localeCompare(String(b.itemId))) })
+    if (key) {
+      const previous = await findRefundOperation(key, id, 'shortfall', fingerprint)
+      if (previous) return NextResponse.json(await executeRefund(previous))
     }
 
     const requestedByItem = new Map<string, number>()
@@ -106,6 +106,7 @@ export async function POST(
           orderedQuantity: ordered,
           previousFulfilledQuantity: previousFulfilled,
           nextFulfilledQuantity: requestedByItem.get(item.id) ?? previousFulfilled,
+          lineTaxAmount: item.tax_amount == null ? undefined : Number(item.tax_amount),
           category:
             typeof item.product_id === 'string'
               ? (categoryByProduct.get(item.product_id) ?? '')
@@ -138,142 +139,27 @@ export async function POST(
     // the shortfall just reduces what staff should collect at handoff.
     const isUnpaid = orderRecord.payment_status === 'unpaid'
 
-    // 1. Persist what was handed over. Do this before charging anything back so
-    //    a failed refund never leaves the money moved but the record stale.
-    for (const line of quote.lines) {
-      const { error: updateErr } = await supabaseAdmin
-        .from('order_items')
-        .update({ fulfilled_quantity: line.fulfilledQuantity })
-        .eq('id', line.itemId)
-        .eq('order_id', id)
-
-      if (updateErr && isMissingColumn(updateErr.message)) {
-        return NextResponse.json(
-          {
-            error:
-              'Run supabase/partial-fulfillment.sql — the fulfilled_quantity column is missing.',
-          },
-          { status: 400 }
-        )
-      }
-      if (updateErr) {
-        return NextResponse.json({ error: updateErr.message }, { status: 500 })
-      }
+    if (lines.some((line) => line.nextFulfilledQuantity > line.previousFulfilledQuantity)) {
+      return NextResponse.json({ error: 'Fulfilled quantities cannot increase after an adjustment. Contact the customer to arrange a new purchase.' }, { status: 400 })
     }
-
-    // 2. Move the money.
-    let refundId: string | null = null
-    let refundError: string | null = null
-
-    if (quote.totalRefund > 0 && isStripe) {
-      const secret = process.env.STRIPE_SECRET_KEY
-      if (!secret) {
-        refundError = 'Stripe is not configured — record the refund manually.'
-      } else {
-        try {
-          const stripe = new Stripe(secret)
-          const refund = await stripe.refunds.create({
-            payment_intent: order.stripe_payment_intent_id as string,
-            amount: Math.round(quote.totalRefund * 100),
-            reason: 'requested_by_customer',
-          })
-          refundId = refund.id
-        } catch (e) {
-          refundError = e instanceof Error ? e.message : 'Stripe refund failed.'
-        }
-      }
-    }
-
-    const refundApplied =
-      quote.totalRefund > 0 && !isUnpaid && (refundId !== null || !isStripe)
-    const newRefundTotal = refundApplied
-      ? Math.round((alreadyRefunded + quote.totalRefund) * 100) / 100
-      : alreadyRefunded
-
-    if (refundApplied) {
-      const previousShortfall = Number(orderRecord.shortfall_refund_amount ?? 0)
-      const orderUpdate: Record<string, unknown> = {
-        refund_amount: newRefundTotal,
-        shortfall_refund_amount:
-          Math.round((previousShortfall + quote.totalRefund) * 100) / 100,
-      }
-      if (refundId) orderUpdate.refund_stripe_id = refundId
-      if (newRefundTotal >= orderTotal) orderUpdate.refunded_at = new Date().toISOString()
-
-      let update = await supabaseAdmin.from('orders').update(orderUpdate).eq('id', id)
-      if (update.error && isMissingColumn(update.error.message)) {
-        delete orderUpdate.shortfall_refund_amount
-        update = await supabaseAdmin.from('orders').update(orderUpdate).eq('id', id)
-      }
-      if (update.error) {
-        return NextResponse.json({ error: update.error.message }, { status: 500 })
-      }
-    }
-
-    // 3. Audit trail.
-    const status = normalizeOrderStatus(order.status)
-    const summary = quote.shortLines.length
-      ? describeShortLines(quote.shortLines)
-      : 'All items fulfilled'
-    const noteParts = [summary]
-    if (refundApplied) {
-      noteParts.push(
-        `Refunded $${quote.totalRefund.toFixed(2)}${isStripe ? ' via Stripe' : ' (manual)'}`
-      )
-    } else if (isUnpaid && quote.totalRefund > 0) {
-      noteParts.push(
-        `Unpaid order — collect $${Math.max(0, orderTotal - quote.totalRefund).toFixed(2)} instead of $${orderTotal.toFixed(2)}`
-      )
-    } else if (refundError) {
-      noteParts.push(`Refund failed: ${refundError}`)
-    }
-    if (reason) noteParts.push(reason)
-
-    const { error: logError } = await supabaseAdmin.from('order_status_logs').insert({
-      order_id: id,
-      from_status: status,
-      to_status: status,
-      changed_by: 'admin',
-      note: noteParts.join(' · ').slice(0, 500),
+    const op = await prepareRefund({
+      key: key!, orderId: id, kind: 'shortfall',
+      amountCents: isUnpaid ? 0 : Math.round(quote.totalRefund * 100),
+      expectedRefund: alreadyRefunded,
+      payload: { fingerprint, reason,
+        paymentIntentId: isStripe && !isUnpaid ? order.stripe_payment_intent_id : null,
+        lines: quote.lines.map((line) => ({ itemId: line.itemId,
+          previousQuantity: lines.find((input) => input.itemId === line.itemId)!.previousFulfilledQuantity,
+          fulfilledQuantity: line.fulfilledQuantity })),
+        notification: quote.shortLines.length && order.customer_email ? {
+          order: { id, order_number: order.order_number ?? null, customer_name: order.customer_name ?? 'there',
+            customer_email: order.customer_email, total_amount: orderTotal, shipping_method: order.shipping_method ?? null },
+          shortLines: quote.shortLines, refundAmount: !isUnpaid ? quote.totalRefund : 0,
+        } : undefined,
+        response: { quote, refunded: !isUnpaid && quote.totalRefund > 0, unpaid: isUnpaid },
+      },
     })
-    if (logError && !/relation .* does not exist|could not find the table/i.test(logError.message)) {
-      console.error('[adjust-items] log insert warning:', logError)
-    }
-
-    // 4. Tell the customer what they are not getting and what came back.
-    if (quote.shortLines.length && order.customer_email) {
-      try {
-        await sendShortfallEmail({
-          order: {
-            id,
-            order_number: order.order_number ?? null,
-            customer_name: order.customer_name ?? 'there',
-            customer_email: order.customer_email,
-            total_amount: orderTotal,
-            shipping_method: order.shipping_method ?? null,
-          },
-          shortLines: quote.shortLines,
-          refundAmount: refundApplied ? quote.totalRefund : 0,
-        })
-      } catch (e) {
-        console.error('[adjust-items] shortfall email failed:', e)
-      }
-    }
-
-    if (refundError) {
-      return NextResponse.json(
-        { error: `Items saved, but the refund failed: ${refundError}`, quote },
-        { status: 502 }
-      )
-    }
-
-    return NextResponse.json({
-      ok: true,
-      quote,
-      refundId,
-      refunded: refundApplied,
-      unpaid: isUnpaid,
-    })
+    return NextResponse.json(await executeRefund(op))
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Server error.'
     return NextResponse.json({ error: message }, { status: 500 })

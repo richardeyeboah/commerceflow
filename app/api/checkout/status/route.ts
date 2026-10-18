@@ -79,6 +79,8 @@ export async function GET(req: NextRequest) {
       }
 
       if (order?.id) {
+        const { count, error } = await supabaseAdmin.from('order_items').select('id', { count: 'exact', head: true }).eq('order_id', order.id)
+        if (error || !count) return NextResponse.json({ status: 'processing' })
         return NextResponse.json({
           status: 'complete',
           orderId: order.id,
@@ -116,6 +118,8 @@ export async function GET(req: NextRequest) {
       .maybeSingle()
 
     if (order?.id) {
+      const { count, error } = await supabaseAdmin.from('order_items').select('id', { count: 'exact', head: true }).eq('order_id', order.id)
+      if (error || !count) return NextResponse.json({ status: 'processing' })
       return NextResponse.json({
         status: 'complete',
         orderId: order.id,

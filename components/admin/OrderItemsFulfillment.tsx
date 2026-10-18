@@ -53,6 +53,7 @@ export function OrderItemsFulfillment({
   const [draft, setDraft] = useState<Record<string, number>>(saved)
   const [quote, setQuote] = useState<Quote | null>(null)
   const [quoting, setQuoting] = useState(false)
+  const requestKey = useRef<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [reason, setReason] = useState('')
   const [error, setError] = useState('')
@@ -94,19 +95,18 @@ export function OrderItemsFulfillment({
   }, [draft, items, orderId])
 
   // Debounced so holding the stepper does not fire a request per click.
-  const quoteRef = useRef(requestQuote)
-  quoteRef.current = requestQuote
   useEffect(() => {
     if (!dirty) {
       setQuote(null)
       return
     }
-    const t = window.setTimeout(() => void quoteRef.current(), 350)
+    const t = window.setTimeout(() => void requestQuote(), 350)
     return () => window.clearTimeout(t)
-  }, [draft, dirty])
+  }, [requestQuote, dirty])
 
   function setQty(itemId: string, value: number, max: number) {
     const next = Math.max(0, Math.min(max, Math.trunc(Number.isFinite(value) ? value : 0)))
+    requestKey.current = null
     setDraft((prev) => ({ ...prev, [itemId]: next }))
     setDone('')
   }
@@ -121,12 +121,13 @@ export function OrderItemsFulfillment({
         : 'Save these fulfilled quantities?'
     if (!confirm(label)) return
 
+    requestKey.current ??= crypto.randomUUID()
     setBusy(true)
     setError('')
     try {
       const res = await fetch(`/api/admin/orders/${orderId}/adjust-items`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestKey.current },
         body: JSON.stringify({
           reason: reason.trim() || undefined,
           lines: items.map((item) => ({
@@ -142,11 +143,12 @@ export function OrderItemsFulfillment({
       }
       setDone(
         data.refunded
-          ? `Refunded ${money(data.quote?.totalRefund ?? 0)} and notified the customer.`
+          ? `Refunded ${money(data.quote?.totalRefund ?? 0)} for the unavailable items.`
           : data.unpaid && Number(data.quote?.totalRefund ?? 0) > 0
             ? `Saved — collect ${money(data.quote?.totalRefund ?? 0)} less at handoff.`
             : 'Saved.'
       )
+      requestKey.current = null
       setReason('')
       router.refresh()
     } catch {

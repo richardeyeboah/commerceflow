@@ -21,10 +21,8 @@ comment on column orders.order_source is
 
 -- Existing Stripe (and any already-settled) rows stay paid.
 update orders
-set payment_status = 'paid',
-    paid_at = coalesce(paid_at, created_at)
-where payment_status is distinct from 'paid'
-   or paid_at is null;
+set paid_at = coalesce(paid_at, created_at)
+where payment_status = 'paid' and paid_at is null;
 
 create index if not exists orders_payment_status_idx on orders (payment_status);
 create index if not exists orders_order_source_idx on orders (order_source);

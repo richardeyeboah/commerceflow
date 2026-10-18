@@ -6,10 +6,10 @@
  * money path, so it is a pure function with no I/O: every caller passes the
  * amounts that were actually charged and gets back the exact cents to refund.
  *
- * Everything is computed on the *cumulative* shortage (ordered − fulfilled)
- * rather than on a single adjustment. Subtracting the previous cumulative
- * refund from the new one makes repeated adjustments self-correcting: staff can
- * short an item, put one back, and short it again without ever double-refunding.
+ * Computes incremental shortages. The request handler rejects increases in
+ * fulfilled quantity after an adjustment: collecting money again is a separate
+ * operation. Durable operation records, rather than this pure math helper,
+ * establish whether a refund actually settled.
  */
 
 import { isCategoryTaxable } from '@/lib/tax/sales-tax'
@@ -25,6 +25,8 @@ export type ShortfallLineInput = {
   nextFulfilledQuantity: number
   /** Product category, used to decide whether the line carried sales tax. */
   category?: string | null
+  /** Exact tax charged for this line; absent only for legacy orders. */
+  lineTaxAmount?: number
 }
 
 export type ShortfallLineResult = {
@@ -84,6 +86,7 @@ export function computeShortfallRefund(input: {
   let goodsRefund = 0
   let taxableShortBefore = 0
   let taxableShortAfter = 0
+  let recordedTaxRefund = 0
 
   for (const raw of input.lines) {
     const ordered = safeQty(raw.orderedQuantity)
@@ -97,8 +100,13 @@ export function computeShortfallRefund(input: {
     const removedNow = previous - next
     const refundForLine = round2(removedNow * unitPrice)
 
-    taxableShortBefore += taxable ? (ordered - previous) * unitPrice : 0
-    taxableShortAfter += taxable ? (ordered - next) * unitPrice : 0
+    if (typeof raw.lineTaxAmount === 'number' && Number.isFinite(raw.lineTaxAmount) && ordered > 0) {
+      const chargedTax = safeMoney(raw.lineTaxAmount)
+      recordedTaxRefund += round2(chargedTax * (ordered - next) / ordered) - round2(chargedTax * (ordered - previous) / ordered)
+    } else {
+      taxableShortBefore += taxable ? (ordered - previous) * unitPrice : 0
+      taxableShortAfter += taxable ? (ordered - next) * unitPrice : 0
+    }
     goodsRefund += refundForLine
 
     lines.push({
@@ -118,7 +126,7 @@ export function computeShortfallRefund(input: {
   // Tax follows the goods, but can never exceed the tax actually collected.
   const taxBefore = Math.min(round2(taxableShortBefore * taxRate), orderTaxAmount)
   const taxAfter = Math.min(round2(taxableShortAfter * taxRate), orderTaxAmount)
-  const taxRefund = round2(taxAfter - taxBefore)
+  const taxRefund = round2(taxAfter - taxBefore + recordedTaxRefund)
 
   const computed = round2(goodsRefund + taxRefund)
   const totalRefund = round2(Math.min(Math.max(computed, 0), maxRefundable))

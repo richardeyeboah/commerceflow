@@ -25,10 +25,6 @@ const SORT_CONFIG: Record<SortOption, { column: string; ascending: boolean }> = 
   'name-asc': { column: 'name', ascending: true },
 }
 
-async function selectProducts(supabase: Awaited<ReturnType<typeof createClientOptional>>, columns = STOREFRONT_PRODUCT_SELECT) {
-  if (!supabase) return null
-  return supabase.from('products').select(columns)
-}
 
 export async function fetchProductsForShop(options?: {
   q?: string

@@ -1,3 +1,5 @@
+> Current engineering architecture and release instructions: [ARCHITECTURE.md](ARCHITECTURE.md), [DATABASE.md](DATABASE.md), and [SECURITY.md](SECURITY.md). Historical setup guidance below may describe an older deployment.
+
 # Kintampo African Market — Project Documentation
 
 ## 1. Overview
@@ -152,7 +154,7 @@ Key tables: `products`, `orders`, `order_items`, `profiles`, `addresses`, `check
 
 ### Vercel
 
-1. Connect GitHub repo `richardeyeboah/chuck-and-rich`
+1. Connect GitHub repo `richardeyeboah/kintampo-african-market`
 2. Root directory: project root
 3. Set all production env vars
 4. Deploy from `main`

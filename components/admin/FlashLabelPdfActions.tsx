@@ -47,7 +47,6 @@ export function FlashLabelPdfActions({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
-  const [publicUrl, setPublicUrl] = useState(labelUrl?.startsWith('https://') ? labelUrl : '')
   const [copied, setCopied] = useState(false)
 
   const filename = `${FILENAME_PREFIX[kind]}-${tracking || orderId.slice(0, 8)}.pdf`
@@ -55,7 +54,7 @@ export function FlashLabelPdfActions({
   async function resolveFile(): Promise<File> {
     if (getFile) return getFile()
     if (pdfBase64) return pdfFileFromBase64(pdfBase64, filename)
-    if (labelUrl) return pdfFileFromUrl(labelUrl, filename)
+    if (labelUrl && kind !== 'label') return pdfFileFromUrl(labelUrl, filename)
     const res = await fetch(`/api/admin/orders/${orderId}/shipping/label-file`)
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
@@ -76,12 +75,6 @@ export function FlashLabelPdfActions({
         throw new Error('Could not prepare a valid PDF.')
       }
       downloadPdfFile(file)
-      try {
-        const url = await uploadPdfForShare(orderId, file, kind)
-        setPublicUrl(url)
-      } catch {
-        if (labelUrl?.startsWith('https://')) setPublicUrl(labelUrl)
-      }
       setStatus('PDF downloaded.')
     } catch (err) {
       if (isAbortError(err)) return
@@ -96,15 +89,11 @@ export function FlashLabelPdfActions({
     setError('')
     setStatus('')
     try {
-      let url = publicUrl
-      if (!url) {
-        const file = await resolveFile()
-        url = await uploadPdfForShare(orderId, file, kind)
-        setPublicUrl(url)
-      }
+      const file = await resolveFile()
+      const url = await uploadPdfForShare(orderId, file, kind)
       await navigator.clipboard.writeText(url)
       setCopied(true)
-      setStatus('Link copied.')
+      setStatus('Link copied. Expires in 5 minutes.')
       window.setTimeout(() => setCopied(false), 2000)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not copy link.')

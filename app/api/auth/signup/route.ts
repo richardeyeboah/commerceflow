@@ -1,3 +1,4 @@
+import { limitPublicRequest } from '@/lib/security/request-rate-limit'
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { isPasswordAcceptableForSignup } from '@/lib/auth/password-strength'
@@ -20,28 +21,11 @@ function isValidOptionalPhone(phone: string): boolean {
   return digits.length >= 10 && digits.length <= 15
 }
 
-async function findUserIdByEmail(email: string): Promise<string | null> {
-  const normalized = email.trim().toLowerCase()
-  // Paginate lightly — grocery store volume is small; stop early on match.
-  for (let page = 1; page <= 10; page++) {
-    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
-      page,
-      perPage: 200,
-    })
-    if (error) throw error
-    const hit = data.users.find((u) => u.email?.toLowerCase() === normalized)
-    if (hit) return hit.id
-    if (data.users.length < 200) break
-  }
-  return null
-}
-
-/**
- * Create a store account that can sign in immediately — no email confirmation step.
- * If an unconfirmed leftover account exists for the same email, refresh password and confirm it
- * so "sign up again" works instead of trapping the customer in a confirm loop.
- */
+/** New accounts only. Existing accounts must use verified password recovery. */
 export async function POST(request: Request) {
+  const limited = await limitPublicRequest(request, 'signup', 10)
+  if (limited) return limited
+
   let body: Body
   try {
     body = (await request.json()) as Body
@@ -110,42 +94,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
     }
 
-    const existingId = await findUserIdByEmail(email)
-    if (!existingId) {
-      return NextResponse.json(
-        { error: 'An account with this email already exists. Sign in or reset your password.' },
-        { status: 409 }
-      )
-    }
-
-    const { data: existing, error: getErr } = await supabaseAdmin.auth.admin.getUserById(existingId)
-    if (getErr || !existing.user) {
-      return NextResponse.json(
-        { error: 'An account with this email already exists. Sign in or reset your password.' },
-        { status: 409 }
-      )
-    }
-
-    // Confirmed account → ask them to sign in (do not overwrite password).
-    if (existing.user.email_confirmed_at) {
-      return NextResponse.json(
-        { error: 'An account with this email already exists. Sign in or reset your password.' },
-        { status: 409 }
-      )
-    }
-
-    // Unconfirmed leftover — confirm + set the password they just chose so they can continue.
-    const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(existingId, {
-      password,
-      email_confirm: true,
-      user_metadata: userMeta,
-    })
-    if (updateErr) {
-      console.error('[auth/signup] updateUser', updateErr.message)
-      return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
-    }
-
-    return NextResponse.json({ ok: true, recovered: true })
+    return NextResponse.json(
+      { error: 'An account with this email already exists. Sign in or reset your password.' },
+      { status: 409 }
+    )
   } catch (e) {
     console.error('[auth/signup]', e)
     return NextResponse.json({ error: 'Sign-up is temporarily unavailable.' }, { status: 503 })

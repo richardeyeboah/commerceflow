@@ -12,7 +12,7 @@ import {
   type ShippingMethod,
   type ShippingQuote,
 } from '@/lib/shipping'
-import { calculateSalesTax, type SalesTaxQuote, type TaxLineInput } from '@/lib/tax/sales-tax'
+import { calculateSalesTax, isCategoryTaxable, type SalesTaxQuote, type TaxLineInput } from '@/lib/tax/sales-tax'
 
 export type ProductWithCategory = AuthoritativeProduct & {
   category: string
@@ -134,6 +134,19 @@ export function computeCheckoutTotals(input: {
     state,
     shippingMethod: shipping_method as ShippingMethod,
   })
+
+  // Allocate exact charged tax cents across taxable lines. Cumulative rounding
+  // ensures all line allocations sum to the order tax, including penny cases.
+  let taxableSoFar = 0
+  let allocatedTaxCents = 0
+  for (const item of orderItems) {
+    if (tax.applies && isCategoryTaxable(input.productMap.get(item.product_id)?.category ?? '')) {
+      taxableSoFar += item.subtotal
+      const cumulative = Math.round(taxableSoFar * tax.rate * 100)
+      item.tax_amount = (cumulative - allocatedTaxCents) / 100
+      allocatedTaxCents = cumulative
+    } else item.tax_amount = 0
+  }
 
   const tipRaw = Number(input.tipAmount ?? 0)
   const tip =

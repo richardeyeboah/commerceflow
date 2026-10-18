@@ -1,17 +1,7 @@
--- Public bucket for USPS label PDFs (admin-only upload via service role).
+-- Label PDFs contain customer addresses. Only the service role accesses this bucket.
 insert into storage.buckets (id, name, public)
-values ('shipping-labels', 'shipping-labels', true)
-on conflict (id) do nothing;
-
--- Service role uploads; public read for admin download links.
-create policy "Public read shipping labels"
-on storage.objects for select
-using (bucket_id = 'shipping-labels');
-
-create policy "Service role upload shipping labels"
-on storage.objects for insert
-with check (bucket_id = 'shipping-labels');
-
-create policy "Service role update shipping labels"
-on storage.objects for update
-using (bucket_id = 'shipping-labels');
+values ('shipping-labels', 'shipping-labels', false)
+on conflict (id) do update set public = false;
+drop policy if exists "Public read shipping labels" on storage.objects;
+drop policy if exists "Service role upload shipping labels" on storage.objects;
+drop policy if exists "Service role update shipping labels" on storage.objects;

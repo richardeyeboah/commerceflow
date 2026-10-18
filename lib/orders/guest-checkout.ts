@@ -26,6 +26,6 @@ export function resolveCheckoutMode(metadata: {
 export function normalizeGuestEmail(raw: unknown): string | null {
   if (typeof raw !== 'string') return null
   const email = raw.trim().toLowerCase()
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null
+  if (email.length > 254 || /[%]/.test(email) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null
   return email.slice(0, 254)
 }

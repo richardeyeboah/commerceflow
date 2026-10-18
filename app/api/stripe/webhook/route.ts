@@ -1,3 +1,4 @@
+import { reconcileRefund } from '@/lib/orders/refund-operation'
 import { NextRequest, NextResponse } from 'next/server'
 import type Stripe from 'stripe'
 import { getStripe } from '@/lib/stripe'
@@ -50,5 +51,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (event.type === 'refund.updated' || event.type === 'refund.created' || event.type === 'refund.failed') {
+    try { await reconcileRefund(event.data.object as Stripe.Refund) } catch (error) {
+      console.error('[stripe] refund reconciliation failed', error)
+      return NextResponse.json({ error: 'Refund reconciliation failed' }, { status: 500 })
+    }
+  }
   return NextResponse.json({ received: true })
 }

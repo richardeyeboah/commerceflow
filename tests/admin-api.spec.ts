@@ -38,7 +38,7 @@ test.describe('Admin API', () => {
 
   test('blocks cross-site requests without Origin header', async ({ playwright, baseURL }) => {
     // Fresh request context — no Origin header — should get 403 from same-origin guard.
-    const ctx = await playwright.request.newContext({ baseURL })
+    const ctx = await playwright.request.newContext({ baseURL, extraHTTPHeaders: {} })
     const response = await ctx.post('/api/admin/products', {
       data: { name: 'X', price: 1, category: 'Test' },
     })

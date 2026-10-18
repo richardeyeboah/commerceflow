@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- Node fixture server uses CommonJS. */
 // Local simulator fixture. Database/account data stays in memory; Stripe calls
 // are refused unless BOTH configured keys are explicitly test-mode keys.
 const http = require('node:http')

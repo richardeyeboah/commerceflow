@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+import { recordOrder } from '@/lib/orders/record-order'
 import { STORE } from '@/lib/constants/store'
 import {
   MANUAL_SETTLE_OPTIONS,
@@ -171,6 +173,7 @@ export async function createPhoneOrder(
   const pickupContactName = (input.pickupContactName ?? '').trim().slice(0, 120) || null
 
   const baseOrder = {
+    id: randomUUID(),
     customer_name: customerName.slice(0, 120),
     customer_email: email.slice(0, 200),
     customer_phone: phone.slice(0, 40),
@@ -196,72 +199,13 @@ export async function createPhoneOrder(
     stripe_payment_intent_id: null,
   }
 
-  let order: { id: string; order_number: number | null } | null = null
-  let insertError: { message: string; code?: string } | null = null
-
-  {
-    const withExtras = {
-      ...baseOrder,
-      pickup_contact_name: pickupContactName,
-    }
-    const { data, error } = await supabaseAdmin
-      .from('orders')
-      .insert(withExtras)
-      .select('id, order_number')
-      .single()
-    if (!error && data) {
-      order = data
-    } else {
-      insertError = error
-    }
-  }
-
-  // Installs that have not run phone-orders.sql yet — retry without new columns.
-  if (!order && insertError) {
-    const msg = insertError.message ?? ''
-    const missingColumn =
-      /payment_status|paid_at|order_source|pickup_contact_name/i.test(msg) ||
-      insertError.code === 'PGRST204'
-    if (missingColumn) {
-      const legacy: Record<string, unknown> = { ...baseOrder }
-      delete legacy.payment_status
-      delete legacy.paid_at
-      delete legacy.order_source
-      const { data, error } = await supabaseAdmin
-        .from('orders')
-        .insert(legacy)
-        .select('id, order_number')
-        .single()
-      if (!error && data) order = data
-      else insertError = error
-    }
-  }
-
-  if (!order) {
-    console.error('[phone-order] insert', insertError?.message)
-    return {
-      ok: false,
-      error:
-        'Could not create the order. If this keeps happening, run supabase/phone-orders.sql.',
-      status: 500,
-    }
-  }
-
-  const { error: itemsError } = await supabaseAdmin.from('order_items').insert(
-    itemRows.map((r) => ({
-      order_id: order!.id,
-      product_id: r.product_id,
-      product_name: r.product_name,
-      product_price: r.product_price,
-      quantity: r.quantity,
-      subtotal: r.subtotal,
-    }))
-  )
-
-  if (itemsError) {
-    console.error('[phone-order] items', itemsError.message)
-    await supabaseAdmin.from('orders').delete().eq('id', order.id)
-    return { ok: false, error: 'Could not save order items.', status: 500 }
+  let order: { id: string; order_number: number | null }
+  try {
+    const recorded = await recordOrder({ ...baseOrder, pickup_contact_name: pickupContactName }, itemRows)
+    order = recorded.order
+  } catch (error) {
+    console.error('[phone-order] transaction failed', error)
+    return { ok: false, error: 'Could not record the order. No partial order was saved.', status: 500 }
   }
 
   const logNoteParts = [

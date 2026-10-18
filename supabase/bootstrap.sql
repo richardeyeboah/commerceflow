@@ -202,7 +202,7 @@ drop policy if exists "users can submit reviews" on public.product_reviews;
 create policy "approved reviews are public" on public.product_reviews
   for select using (approved = true);
 create policy "users can submit reviews" on public.product_reviews
-  for insert with check (true);
+  for insert to authenticated with check (auth.uid() = user_id and approved = false);
 
 create table if not exists public.wishlists (
   id          uuid primary key default gen_random_uuid(),

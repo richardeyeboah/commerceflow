@@ -6,7 +6,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 export const runtime = 'nodejs'
 
 /**
- * Upload a label/address-slip PDF to the public shipping-labels bucket
+ * Upload a label/address-slip PDF to the private shipping-labels bucket
  * so FlashLabel Pro can open a real https://…pdf link from Share.
  */
 export async function POST(
@@ -72,11 +72,8 @@ export async function POST(
     )
   }
 
-  const { data } = supabaseAdmin.storage.from('shipping-labels').getPublicUrl(path)
-  const publicUrl = data.publicUrl
-  if (!publicUrl) {
-    return NextResponse.json({ error: 'Could not create public PDF link.' }, { status: 500 })
-  }
-
-  return NextResponse.json({ ok: true, publicUrl, path })
+  const { data, error: signError } = await supabaseAdmin.storage.from('shipping-labels').createSignedUrl(path, 300)
+  if (signError || !data?.signedUrl) return NextResponse.json({ error: 'Could not create PDF link.' }, { status: 500 })
+  // Keep the existing response field for printer clients; the URL expires in five minutes.
+  return NextResponse.json({ ok: true, publicUrl: data.signedUrl, expiresIn: 300, path })
 }
