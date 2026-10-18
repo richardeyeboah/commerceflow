@@ -1,4 +1,8 @@
-# Kintampo African Market
+# Full-Stack E-Commerce & Order Management Platform
+
+**Next.js · TypeScript · Supabase · PostgreSQL · Stripe**
+
+[Live Site](https://kintampoafricanmarket.com) | [GitHub](https://github.com/richardeyeboah/kintampo-african-market)
 
 Production e-commerce platform for Kintampo African Market, an African and Caribbean grocery store in Columbus, Ohio.
 
