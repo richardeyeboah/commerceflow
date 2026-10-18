@@ -24,3 +24,7 @@ Service-boundary tests cover exact guest email lookup, internal-log filtering, u
 ## What remains unverified
 
 Hosted Supabase policies/storage, real independent-connection contention, Stripe webhook configuration, actual provider credentials, mail delivery, native client builds, and the full catalog/browser suite were not validated by these isolated checks. Follow `DATABASE.md` for staging acceptance. Tests against a simulated Supabase schema do not establish the live deployment's security state.
+
+## GitHub-hosted checks
+
+The first PR check did not start: GitHub reported that the account is locked due to a billing issue. This is an external account blocker, not a failed test execution. The evidence is [Actions run 39157845718](https://github.com/richardeyeboah/kintampo-african-market/actions/runs/39157845718). Local verification results above remain separate from GitHub-hosted status. Resolve account billing and the workflow permission before claiming the expanded CI pipeline is active.
