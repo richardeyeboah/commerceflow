@@ -31,7 +31,8 @@ Use an isolated development database and Stripe test mode. Show browsing and gue
 
 ## Resume entry
 
-**E-Commerce & Order Management System**  
+**E-Commerce & Order Management System**
+
 Next.js, React, TypeScript, PostgreSQL (Supabase), Stripe, Playwright
 
 - Built a full-stack storefront with guest and account checkout, pickup and shipping, and staff dashboards for inventory, refunds, and order fulfillment.
