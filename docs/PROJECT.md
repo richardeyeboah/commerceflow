@@ -1,4 +1,4 @@
-# Kintampo African Market — Project Documentation
+# CommerceFlow — Project Documentation
 
 ## 1. Overview
 

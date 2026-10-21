@@ -1,12 +1,12 @@
-# Kintampo African Market
+# CommerceFlow
 
-Full-stack grocery commerce and order management
+Checkout and Order Management Platform
 
 **Next.js · TypeScript · Supabase · PostgreSQL · Stripe**
 
-[Live Site](https://kintampoafricanmarket.com) | [GitHub](https://github.com/richardeyeboah/kintampo-african-market)
+[Live Site](https://kintampoafricanmarket.com) | [GitHub](https://github.com/richardeyeboah/commerceflow)
 
-A full-stack commerce application built for an African and Caribbean grocery store in Columbus, Ohio. It combines customer shopping, Stripe checkout, and staff order management.
+CommerceFlow is a full-stack checkout and order management application implemented for a grocery retailer in Columbus, Ohio. It combines customer shopping, Stripe checkout, and staff order management.
 
 **Start here:** [Engineering walkthrough](docs/PORTFOLIO.md) · [Application architecture](docs/PROJECT.md) · [Verification](docs/VERIFICATION.md) · [Staff guide](docs/ADMIN.md)
 

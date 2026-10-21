@@ -1,10 +1,10 @@
-# Kintampo engineering walkthrough
+# CommerceFlow engineering walkthrough
 
 ## Project summary
 
-Kintampo African Market is a Next.js and TypeScript grocery commerce application backed by Supabase/PostgreSQL and Stripe. Customers browse, check out, and track purchases; staff manage inventory, refunds, and fulfillment. The web application, native clients, and operating instructions remain in their existing directories so build and deployment paths remain stable.
+CommerceFlow is a Next.js and TypeScript grocery commerce application backed by Supabase/PostgreSQL and Stripe. Customers browse, check out, and track purchases; staff manage inventory, refunds, and fulfillment. The web application, native clients, and operating instructions remain in their existing directories so build and deployment paths remain stable.
 
-[Live storefront](https://kintampoafricanmarket.com) · [Source code](https://github.com/richardeyeboah/kintampo-african-market)
+[Live storefront](https://kintampoafricanmarket.com) · [Source code](https://github.com/richardeyeboah/commerceflow)
 
 ## Code reading order
 
@@ -31,7 +31,7 @@ Use an isolated development database and Stripe test mode. Show browsing and gue
 
 ## Resume entry
 
-**Kintampo African Market | Next.js, TypeScript, Supabase, PostgreSQL, Stripe**
+**CommerceFlow | Next.js, TypeScript, Supabase, PostgreSQL, Stripe**
 
 - Built a full-stack grocery storefront with guest/account checkout, pickup and shipping, and staff tools for inventory, refunds, and fulfillment.
 - Implemented server-calculated checkout totals, Stripe webhook signature verification, and unique payment identifiers to reject client price tampering and detect duplicate payment records.
