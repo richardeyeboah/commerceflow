@@ -1,12 +1,10 @@
-# CommerceFlow
+# E-Commerce & Order Management System
 
-Checkout and Order Management Platform
+**Next.js · React · TypeScript · PostgreSQL (Supabase) · Stripe · Playwright**
 
-**Next.js · TypeScript · Supabase · PostgreSQL · Stripe**
+[Live Site](https://kintampoafricanmarket.com) | [GitHub](https://github.com/richardeyeboah/ecommerce-order-management)
 
-[Live Site](https://kintampoafricanmarket.com) | [GitHub](https://github.com/richardeyeboah/commerceflow)
-
-CommerceFlow is a full-stack checkout and order management application implemented for a grocery retailer in Columbus, Ohio. It combines customer shopping, Stripe checkout, and staff order management.
+E-Commerce & Order Management System is a full-stack checkout and order management application implemented for a grocery retailer in Columbus, Ohio. It combines customer shopping, Stripe checkout, and staff order management.
 
 **Start here:** [Engineering walkthrough](docs/PORTFOLIO.md) · [Application architecture](docs/PROJECT.md) · [Verification](docs/VERIFICATION.md) · [Staff guide](docs/ADMIN.md)
 

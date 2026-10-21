@@ -1,4 +1,4 @@
-# CommerceFlow — Project Documentation
+# E-Commerce & Order Management System — Project Documentation
 
 ## 1. Overview
 
