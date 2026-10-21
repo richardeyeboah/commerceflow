@@ -1,10 +1,10 @@
-# CommerceFlow engineering walkthrough
+# E-Commerce & Order Management System engineering walkthrough
 
 ## Project summary
 
-CommerceFlow is a Next.js and TypeScript grocery commerce application backed by Supabase/PostgreSQL and Stripe. Customers browse, check out, and track purchases; staff manage inventory, refunds, and fulfillment. The web application, native clients, and operating instructions remain in their existing directories so build and deployment paths remain stable.
+E-Commerce & Order Management System is a Next.js and TypeScript grocery commerce application backed by Supabase/PostgreSQL and Stripe. Customers browse, check out, and track purchases; staff manage inventory, refunds, and fulfillment. The web application, native clients, and operating instructions remain in their existing directories so build and deployment paths remain stable.
 
-[Live storefront](https://kintampoafricanmarket.com) · [Source code](https://github.com/richardeyeboah/commerceflow)
+[Live storefront](https://kintampoafricanmarket.com) · [Source code](https://github.com/richardeyeboah/ecommerce-order-management)
 
 ## Code reading order
 
@@ -31,10 +31,12 @@ Use an isolated development database and Stripe test mode. Show browsing and gue
 
 ## Resume entry
 
-**CommerceFlow | Next.js, TypeScript, Supabase, PostgreSQL, Stripe**
+**E-Commerce & Order Management System**
 
-- Built a full-stack grocery storefront with guest/account checkout, pickup and shipping, and staff tools for inventory, refunds, and fulfillment.
-- Implemented server-calculated checkout totals, Stripe webhook signature verification, and unique payment identifiers to reject client price tampering and detect duplicate payment records.
-- Developed a 61-test Playwright suite across 13 files covering checkout, tax/shipping rules, refunds, receipts, and staff APIs.
+Next.js, React, TypeScript, PostgreSQL (Supabase), Stripe, Playwright
 
-The test count describes declared tests. Consult verification notes for tests actually executed. Do not infer revenue, customer counts, uptime, deployment parity, or full integration success from source code.
+- Built a full-stack storefront with guest and account checkout, pickup and shipping, and staff dashboards for inventory, refunds, and order fulfillment.
+- Calculated checkout totals from database prices and verified Stripe webhook signatures; enforced unique payment IDs to detect duplicate payment records.
+- Implemented partial-refund calculations for missing items and tax adjustments, capped at the remaining paid balance; validated pricing, refunds, tax, and receipt generation with 32 automated tests.
+
+See [verification notes](VERIFICATION.md) for the full test inventory and execution scope.
