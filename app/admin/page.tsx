@@ -77,9 +77,11 @@ async function fetchOrdersAndItems(startIso: string | null, endIso: string) {
   }
 
   // payment_status only exists after the phone-orders migration; fall back without it.
-  let { data: rawOrders, error } = await buildQuery(
+  const initialResult = await buildQuery(
     `${DASHBOARD_ORDER_COLUMNS}, payment_status`
   )
+  let rawOrders = initialResult.data
+  const error = initialResult.error
   if (error && /payment_status/i.test(error.message)) {
     ;({ data: rawOrders } = await buildQuery(DASHBOARD_ORDER_COLUMNS))
   }

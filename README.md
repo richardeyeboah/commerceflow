@@ -1,10 +1,14 @@
-# Full-Stack E-Commerce & Order Management Platform
+# CommerceFlow
+
+Checkout and Order Management Platform
 
 **Next.js · TypeScript · Supabase · PostgreSQL · Stripe**
 
-[Live Site](https://kintampoafricanmarket.com) | [GitHub](https://github.com/richardeyeboah/kintampo-african-market)
+[Live Site](https://kintampoafricanmarket.com) | [GitHub](https://github.com/richardeyeboah/commerceflow)
 
-Production e-commerce platform for Kintampo African Market, an African and Caribbean grocery store in Columbus, Ohio.
+CommerceFlow is a full-stack checkout and order management application implemented for a grocery retailer in Columbus, Ohio. It combines customer shopping, Stripe checkout, and staff order management.
+
+**Start here:** [Engineering walkthrough](docs/PORTFOLIO.md) · [Application architecture](docs/PROJECT.md) · [Verification](docs/VERIFICATION.md) · [Staff guide](docs/ADMIN.md)
 
 - Storefront: [kintampoafricanmarket.com](https://kintampoafricanmarket.com)
 - Web stack: Next.js 16, React 19, TypeScript, Supabase/PostgreSQL, Stripe, Upstash Redis, Postmark
@@ -33,11 +37,13 @@ Production e-commerce platform for Kintampo African Market, an African and Carib
 
 Prices and totals are calculated on the server before a Stripe Checkout Session is created. Checkout snapshots preserve the purchased item data, and unique Stripe session and payment identifiers prevent the same payment from being recorded twice. Webhooks update payment and fulfillment records after Stripe confirms an event.
 
+These controls do not establish atomic fulfillment across multiple database writes or guarantee exactly-once behavior after partial failures. Those require separate transaction and recovery verification.
+
 Rate limits use Upstash Redis when configured. Sensitive staff and payment operations run on protected server routes, and secrets stay in local or hosting environment variables.
 
 ## Testing
 
-The Playwright suite currently contains **61 tests across 13 files**. It covers:
+The checked-in Playwright suite declares **61 tests across 13 files**. This is a test inventory, not a claim that all integration tests passed against a deployed store. It includes:
 
 - Server-side protection against price tampering
 - Guest and signed-in checkout
@@ -62,10 +68,10 @@ npx playwright test
 
 ## Local development
 
-Requirements: Node.js 20+, npm, a Supabase project, and Stripe test credentials.
+Requirements: Node.js 22 LTS, npm, a dedicated development Supabase project, and Stripe test credentials. Keep development separate from live customers and payments.
 
 ```bash
-npm install
+npm ci
 cp .env.example .env.local
 npm run dev
 ```
@@ -75,6 +81,7 @@ Open [http://localhost:3000](http://localhost:3000). Add the required values fro
 Useful checks:
 
 ```bash
+npm run typecheck
 npm run lint
 npm run build
 npx playwright test --list
@@ -82,15 +89,18 @@ npx playwright test --list
 
 ## Deployment
 
-The production site is deployed on Vercel from `main`. Supabase provides authentication and PostgreSQL storage, Stripe handles payment processing, and Postmark sends transactional email.
+The repository documents Vercel deployment from `main`; a source review does not confirm which commit is currently live. Supabase provides authentication and PostgreSQL storage, Stripe handles payment processing, and Postmark sends transactional email.
 
 ## Repository layout
 
 - `app/` — storefront, account pages, staff tools, and server routes
 - `components/` — shared React UI
 - `lib/` — data access, checkout, email, rate limiting, and utilities
-- `supabase/` — database migrations and policies
+- `supabase/` — schema setup, incremental SQL scripts, and policies
 - `tests/` — Playwright end-to-end coverage
 - `apple/` — SwiftUI clients and setup notes
+- `mobile/` — Capacitor mobile workspace
+- `docs/` — architecture, engineering walkthrough, verification, and staff operations
+- `scripts/` — development, catalog import, and maintenance tools
 
 This repository contains application code. Product, customer, order, payment, and credential data must remain in the configured services and environment variables.
