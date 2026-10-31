@@ -190,7 +190,7 @@ struct FreeShippingProgress: View {
             .fixedSize(horizontal: false, vertical: true)
             ProgressView(value: progress)
                 .tint(remaining > 0 ? Brand.red : Brand.success)
-                .animation(.easeOut(duration: 0.25), value: progress)
+                .animation(.easeOut(duration: 0.2), value: progress)
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)

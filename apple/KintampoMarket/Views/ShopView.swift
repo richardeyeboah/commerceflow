@@ -72,7 +72,7 @@ struct ShopView: View {
                 }
                 // A deep-linked or tapped chip may sit off-screen; bring it into view.
                 .onChange(of: selectedCategory) { _, cat in
-                    withAnimation { chips.scrollTo(cat ?? "All", anchor: .center) }
+                    withAnimation(.easeOut(duration: 0.2)) { chips.scrollTo(cat ?? "All", anchor: .center) }
                 }
                 .onChange(of: chipCategories) { _, _ in
                     chips.scrollTo(selectedCategory ?? "All", anchor: .center)
@@ -395,7 +395,7 @@ private struct SuggestionFlow: View {
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(Brand.ink)
                         .padding(.horizontal, 14)
-                        .frame(minHeight: 40)
+                        .frame(minWidth: 44, minHeight: 44)
                         .background(Brand.card)
                         .overlay(Capsule().stroke(Brand.line))
                         .clipShape(Capsule())

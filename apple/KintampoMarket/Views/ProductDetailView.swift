@@ -490,7 +490,7 @@ private struct ZoomableImage: View {
             // Pan only while zoomed, so a normal swipe still pages between photos.
             .gesture(pan, including: scale > 1 ? .all : .none)
             .onTapGesture(count: 2) {
-                withAnimation(.spring(duration: 0.3)) {
+                withAnimation(.snappy(duration: 0.2)) {
                     if scale > 1 { reset() } else { scale = 2.5; lastScale = 2.5 }
                 }
             }
@@ -503,7 +503,7 @@ private struct ZoomableImage: View {
             .onChanged { value in scale = min(4, max(1, lastScale * value.magnification)) }
             .onEnded { _ in
                 lastScale = scale
-                if scale <= 1 { withAnimation(.spring(duration: 0.3)) { reset() } }
+                if scale <= 1 { withAnimation(.snappy(duration: 0.2)) { reset() } }
             }
     }
 

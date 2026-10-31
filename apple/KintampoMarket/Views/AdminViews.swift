@@ -10,7 +10,7 @@ struct AdminOrdersView: View {
     var body: some View {
         Group {
             if !admin.checked {
-                ProgressView()
+                List { SkeletonRows(count: 6, showsImage: false) }
             } else if admin.isSignedIn {
                 AdminOrderQueue(status: initialStatus, queue: initialStatus == nil ? .needsAction : .all)
             } else {
@@ -118,7 +118,7 @@ private struct AdminOrderQueue: View {
                     Button("Retry") { Task { await reload() } }
                 }
             } else if !loaded {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                Section { SkeletonRows(count: 6, showsImage: false) }
             } else if orders.isEmpty {
                 Section {
                     Text(search.isEmpty ? "No orders here. Nice work." : "No orders match \u{201C}\(search)\u{201D}.")
@@ -143,7 +143,7 @@ private struct AdminOrderQueue: View {
                         } label: {
                             HStack {
                                 Spacer()
-                                if loadingMore { ProgressView() } else { Text("Load more orders") }
+                                Text(loadingMore ? "Loading…" : "Load more orders")
                                 Spacer()
                             }
                             .frame(minHeight: 44)
@@ -318,7 +318,10 @@ struct AdminOrderDetailView: View {
                     Button("Retry") { Task { await load() } }
                 }
             } else {
-                ProgressView()
+                Form {
+                    Section { SkeletonRows(count: 4, showsImage: false) }
+                    Section { SkeletonRows(count: 3) }
+                }
             }
         }
         .navigationTitle(detail?.order.displayNumber ?? "Order")

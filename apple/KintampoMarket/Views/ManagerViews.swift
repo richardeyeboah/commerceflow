@@ -10,7 +10,7 @@ struct StoreManagerView: View {
     var body: some View {
         Group {
             if !admin.checked {
-                ProgressView()
+                List { SkeletonRows(count: 8, showsImage: false) }
             } else if admin.isSignedIn {
                 ManagerDashboard()
             } else {
@@ -58,7 +58,15 @@ private struct ManagerDashboard: View {
                     Button("Retry") { Task { await load() } }
                 }
             } else {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                Section {
+                    Grid(horizontalSpacing: 10, verticalSpacing: 10) {
+                        GridRow { KPITileSkeleton(); KPITileSkeleton() }
+                        GridRow { KPITileSkeleton(); KPITileSkeleton() }
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+                }
+                Section { SkeletonRows(count: 4, showsImage: false) }
             }
 
             Section {
@@ -235,6 +243,19 @@ private struct KPITile: View {
     }
 }
 
+private struct KPITileSkeleton: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            RoundedRectangle(cornerRadius: 4).fill(Color.gray.opacity(0.12)).frame(width: 60, height: 10)
+            RoundedRectangle(cornerRadius: 6).fill(Color.gray.opacity(0.12)).frame(width: 100, height: 24)
+        }
+        .frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading)
+        .padding(14)
+        .background(Brand.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityHidden(true)
+    }
+}
+
 private struct QueueRow: View {
     let icon: String
     let title: String
@@ -291,7 +312,7 @@ struct InventoryView: View {
                     Button("Retry") { Task { await reload() } }
                 }
             } else if !loaded {
-                Section { ProgressView().frame(maxWidth: .infinity) }
+                Section { SkeletonRows(count: 8) }
             } else if products.isEmpty {
                 Section {
                     Text(search.isEmpty ? "Nothing here." : "No products match \u{201C}\(search)\u{201D}.")
@@ -318,7 +339,7 @@ struct InventoryView: View {
                         } label: {
                             HStack {
                                 Spacer()
-                                if loadingMore { ProgressView() } else { Text("Load more products") }
+                                Text(loadingMore ? "Loading…" : "Load more products")
                                 Spacer()
                             }
                             .frame(minHeight: 44)
@@ -563,7 +584,7 @@ struct ReviewModerationView: View {
                     Button("Retry") { Task { await load() } }
                 }
             } else if !loaded {
-                ProgressView().frame(maxWidth: .infinity)
+                Section { SkeletonRows(count: 4, showsImage: false) }
             } else if reviews.isEmpty {
                 ContentUnavailableView("No reviews waiting", systemImage: "checkmark.bubble",
                                        description: Text("New customer reviews appear here before they go live."))
@@ -614,7 +635,7 @@ struct ReviewModerationView: View {
     private func act(on review: ManagerReview, _ work: () async throws -> Void) async {
         do {
             try await work()
-            withAnimation { reviews.removeAll { $0.id == review.id } }
+            withAnimation(.easeOut(duration: 0.2)) { reviews.removeAll { $0.id == review.id } }
         } catch AppError.unauthorized {
             AdminStore.shared.sessionExpired()
         } catch {

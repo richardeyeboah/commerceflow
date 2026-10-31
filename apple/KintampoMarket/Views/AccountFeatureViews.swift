@@ -423,7 +423,7 @@ struct OrdersView: View {
                         .frame(maxWidth: 160)
                 }
             } else if !loaded {
-                ProgressView()
+                List { SkeletonRows(count: 6, showsImage: false) }
             } else if orders.isEmpty {
                 ContentUnavailableView("No orders yet", systemImage: "list.bullet.rectangle", description: Text("Your orders appear here after checkout."))
             } else {
@@ -459,7 +459,7 @@ struct OrdersView: View {
                         } label: {
                             HStack {
                                 Spacer()
-                                if loadingMore { ProgressView() } else { Text("Show older orders") }
+                                Text(loadingMore ? "Loading…" : "Show older orders")
                                 Spacer()
                             }
                             .frame(minHeight: 44)

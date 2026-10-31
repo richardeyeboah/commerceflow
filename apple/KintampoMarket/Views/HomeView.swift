@@ -15,7 +15,6 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 AnnouncementTicker(items: announcements) { open($0) }
-                    .padding(.horizontal)
 
                 WelcomeHero(inStock: catalog.products.filter(\.effectiveInStock).count)
                     .padding(.horizontal)
@@ -279,48 +278,53 @@ struct HomeView: View {
     }
 }
 
-/// Rotating strip of the website's admin-managed announcements.
+/// The website's admin-managed announcements. Static: one card, or a row the customer swipes
+/// through. Nothing advances on its own (no idle motion after load).
 private struct AnnouncementTicker: View {
     let items: [Announcement]
     let onOpen: (String) -> Void
-    @State private var index = 0
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        if let item = items.isEmpty ? nil : items[index % items.count] {
-            Button {
-                if let href = item.href, !href.isEmpty { onOpen(href) }
-            } label: {
+        if items.count == 1, let item = items.first {
+            card(item).padding(.horizontal)
+        } else if !items.isEmpty {
+            ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    Image(systemName: "megaphone.fill").font(.caption).foregroundStyle(Brand.kenteGold)
-                    Text(item.message)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(typeSize.isAccessibilitySize ? 6 : 2)
-                        .multilineTextAlignment(.leading)
-                        .id(item.id)
-                        .transition(.push(from: .bottom))
-                    Spacer(minLength: 0)
-                    if item.href?.isEmpty == false {
-                        Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.white.opacity(0.7))
+                    ForEach(items) { item in
+                        card(item).containerRelativeFrame(.horizontal) { width, _ in width * 0.86 }
                     }
                 }
-                .padding(.horizontal, 14)
-                .frame(minHeight: 44)
-                .background(Brand.forest)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .clipped()
+                .scrollTargetLayout()
+                .padding(.horizontal)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(item.message)
-            .task(id: items.count) {
-                guard items.count > 1 else { return }
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(4))
-                    withAnimation(.easeInOut(duration: 0.35)) { index += 1 }
+            .scrollTargetBehavior(.viewAligned)
+        }
+    }
+
+    private func card(_ item: Announcement) -> some View {
+        Button {
+            if let href = item.href, !href.isEmpty { onOpen(href) }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "megaphone.fill").font(.caption).foregroundStyle(Brand.gold)
+                Text(item.message)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Brand.ink)
+                    .lineLimit(typeSize.isAccessibilitySize ? 6 : 2)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+                if item.href?.isEmpty == false {
+                    Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(Brand.inkMuted)
                 }
             }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .background(Brand.gold.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(item.message)
     }
 }
 
@@ -367,7 +371,7 @@ private struct WelcomeHero: View {
         let hour = Calendar.current.component(.hour, from: Date())
         let part = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
         let first = auth.profile?.fullName?.split(separator: " ").first.map(String.init)
-        return first.map { "\(part), \($0)" } ?? "Akwaaba — welcome"
+        return first.map { "\(part), \($0)" } ?? part
     }
 
     var body: some View {

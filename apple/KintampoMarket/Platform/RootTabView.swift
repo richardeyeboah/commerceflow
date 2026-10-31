@@ -93,12 +93,12 @@ private struct AddedToastHost: ViewModifier {
             }
             .onChange(of: cart.lastAdded?.token) { _, _ in
                 guard let added = cart.lastAdded else { return }
-                withAnimation(.spring(duration: 0.3)) { toast = added.name }
+                withAnimation(.snappy(duration: 0.2)) { toast = added.name }
             }
             .task(id: cart.lastAdded?.token) {
                 try? await Task.sleep(for: .seconds(3))
                 guard !Task.isCancelled else { return }
-                withAnimation(.easeOut(duration: 0.25)) { toast = nil }
+                withAnimation(.easeOut(duration: 0.2)) { toast = nil }
             }
     }
 }

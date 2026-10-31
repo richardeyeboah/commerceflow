@@ -83,9 +83,12 @@ final class CartStore {
               let fresh = try? await SupabaseService.shared.fetchProductsByIDs(ids)
         else { return nil }
         let live = Dictionary(uniqueKeysWithValues: StorefrontCatalog.visible(fresh).map { ($0.id, $0) })
+        let checked = Set(ids)
         var removed = 0
         var repriced = 0
+        // `items` may have changed during the await; only judge the products we asked about.
         let updated: [CartItem] = items.compactMap { item in
+            guard checked.contains(item.product.id) else { return item }
             guard let product = live[item.product.id] else { removed += 1; return nil }
             let quantity = min(item.quantity, product.maxCartQuantity)
             guard quantity > 0 else { removed += 1; return nil }

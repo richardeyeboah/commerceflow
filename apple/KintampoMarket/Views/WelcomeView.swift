@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Shown once, the first time the app opens.
+/// Shown once, the first time the app opens. Neutral surface and direct utility copy
+/// (AGENTS.md: no cultural theming in chrome, surfaces stay white/warm stone).
 struct WelcomeView: View {
     var onStart: () -> Void
     var onSignIn: () -> Void
@@ -11,74 +12,52 @@ struct WelcomeView: View {
             content
             ScrollView { content }.scrollBounceBehavior(.basedOnSize)
         }
-        .background(Brand.forest.ignoresSafeArea())
-        .ignoresSafeArea(edges: .top)
+        .background(Brand.surface.ignoresSafeArea())
     }
 
     private var content: some View {
-        VStack(spacing: 0) {
-            ZStack(alignment: .bottom) {
-                Image("WelcomeTextiles")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 340)
-                    .clipped()
-                    .accessibilityHidden(true)
-                LinearGradient(colors: [.clear, Brand.forest], startPoint: .center, endPoint: .bottom)
+        VStack(alignment: .leading, spacing: 28) {
+            Spacer(minLength: 24)
+
+            VStack(alignment: .leading, spacing: 14) {
                 Image("LogoMark")
                     .resizable()
-                    .frame(width: 84, height: 84)
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(.white.opacity(0.9), lineWidth: 3))
-                    .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
-                    .offset(y: 42)
+                    .frame(width: 64, height: 64)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .accessibilityLabel("Kintampo logo")
+                Text("Kintampo African Market")
+                    .font(.largeTitle.weight(.bold))
+                    .foregroundStyle(Brand.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("African & Caribbean groceries. Order on your phone, pick up in Columbus or get it shipped.")
+                    .font(.body)
+                    .foregroundStyle(Brand.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(height: 340)
 
-            VStack(spacing: 22) {
-                VStack(spacing: 6) {
-                    Text("AKWAABA")
-                        .font(.caption.weight(.bold))
-                        .tracking(2)
-                        .foregroundStyle(Brand.kenteGold)
-                    Text("Welcome to Kintampo African Market")
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(StoreConfig.tagline)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.8))
-                }
-
-                VStack(alignment: .leading, spacing: 14) {
-                    WelcomeRow(icon: "basket.fill", title: "Real Ghanaian & Caribbean staples",
-                               detail: "Fufu, gari, yam, spices, drinks, prints and beauty.")
-                    WelcomeRow(icon: "storefront.fill", title: "Free pickup in Columbus",
-                               detail: "Order ahead and collect from the store.")
-                    WelcomeRow(icon: "shippingbox.fill", title: "Ships nationwide",
-                               detail: "Free shipping on orders over $\(StoreConfig.freeShippingThreshold).")
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Spacer(minLength: 0)
-
-                VStack(spacing: 10) {
-                    Button("Start shopping", action: onStart)
-                        .buttonStyle(PrimaryButtonStyle())
-                        .accessibilityIdentifier("welcomeStart")
-                    Button("I already have an account", action: onSignIn)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.white)
-                        .frame(minHeight: 44)
-                }
+            VStack(alignment: .leading, spacing: 16) {
+                WelcomeRow(icon: "checkmark.seal.fill", title: "In stock now",
+                           detail: "Fufu, gari, yam, rice, spices, drinks and beauty.")
+                WelcomeRow(icon: "storefront.fill", title: "Free pickup",
+                           detail: StoreConfig.address)
+                WelcomeRow(icon: "shippingbox.fill", title: "Free shipping $\(StoreConfig.freeShippingThreshold)+",
+                           detail: "Ships nationwide within 24 hours.")
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 56)
-            .padding(.bottom, 12)
+
+            Spacer(minLength: 16)
+
+            VStack(spacing: 10) {
+                Button("Start shopping", action: onStart)
+                    .buttonStyle(PrimaryButtonStyle())
+                    .accessibilityIdentifier("welcomeStart")
+                Button("Sign in", action: onSignIn)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Brand.red)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
         }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 12)
     }
 }
 
@@ -91,13 +70,13 @@ private struct WelcomeRow: View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: icon)
                 .font(.headline)
-                .foregroundStyle(Brand.forest)
-                .frame(width: 38, height: 38)
-                .background(Brand.kenteGold)
+                .foregroundStyle(Brand.red)
+                .frame(width: 40, height: 40)
+                .background(Brand.red.opacity(0.08))
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
-                Text(detail).font(.caption).foregroundStyle(.white.opacity(0.75))
+                Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
+                Text(detail).font(.subheadline).foregroundStyle(Brand.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
