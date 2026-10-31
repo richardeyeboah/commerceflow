@@ -10,6 +10,9 @@ final class AuthStore {
     var userId: String?
     var email: String = ""
     var profile: UserProfile?
+    /// Social providers switched on in Supabase ("apple", "google"); empty until loaded.
+    var socialProviders: Set<String> = []
+    var hasSocialSignIn: Bool { socialProviders.contains("apple") || socialProviders.contains("google") }
     var isSignedIn: Bool { accessToken != nil && !(accessToken?.isEmpty ?? true) }
 
     private init() {
@@ -39,7 +42,12 @@ final class AuthStore {
         }
     }
 
+    func loadSocialProviders() async {
+        if let found = try? await SupabaseService.shared.enabledAuthProviders() { socialProviders = found }
+    }
+
     func hydrate() async {
+        await loadSocialProviders()
         do {
             _ = try await validAccessToken()
             if let userId { profile = try await SupabaseService.shared.fetchProfile(userID: userId) }
@@ -50,9 +58,27 @@ final class AuthStore {
 
     func signIn(email: String, password: String) async throws {
         let result = try await SupabaseService.shared.signInWithSession(email: email, password: password)
+        await adopt(result)
+    }
+
+    /// Apple only shares the name on the very first sign-in; save it if the profile has none.
+    func signInWithApple(idToken: String, nonce: String, fullName: String?) async throws {
+        let result = try await SupabaseService.shared.signInWithIdToken(provider: "apple", idToken: idToken, nonce: nonce)
+        await adopt(result)
+        if let fullName, !fullName.isEmpty, (profile?.fullName ?? "").isEmpty {
+            try? await updateProfile(fullName: fullName, phone: profile?.phone ?? "")
+        }
+    }
+
+    func signInWithOAuthCode(_ code: String, verifier: String) async throws {
+        let result = try await SupabaseService.shared.exchangeOAuthCode(code, verifier: verifier)
+        await adopt(result)
+    }
+
+    private func adopt(_ result: AuthSession) async {
         accessToken = result.accessToken
         userId = result.userId
-        self.email = result.email
+        email = result.email
         profile = try? await SupabaseService.shared.fetchProfile(userID: result.userId)
     }
 

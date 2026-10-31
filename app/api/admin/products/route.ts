@@ -4,6 +4,44 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import { assertSameOrigin } from '@/lib/security/same-origin'
 import { parseAdminProductBody } from '@/lib/admin/product-write'
 
+const INVENTORY_PAGE = 50
+
+/**
+ * Inventory list for the native store manager. Includes hidden and out-of-stock items.
+ * `q` searches name/category/brand; `filter` = all | out | low (≤5 left); paged by `offset`.
+ */
+export async function GET(req: NextRequest) {
+  const auth = await requireAdminApi()
+  if (!auth.ok) return auth.response
+
+  const params = req.nextUrl.searchParams
+  // Commas/parens are PostgREST filter syntax and would break the .or() below.
+  const q = (params.get('q') ?? '').replace(/[,()%*"\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80)
+  const filter = params.get('filter')
+  const offset = Math.min(5000, Math.max(0, Number.parseInt(params.get('offset') ?? '0', 10) || 0))
+
+  let query = supabaseAdmin
+    .from('products')
+    .select('id, name, price, category, brand, in_stock, stock_quantity, image_url, pack_label')
+    .order('name', { ascending: true })
+    .range(offset, offset + INVENTORY_PAGE)
+
+  if (q) query = query.or(`name.ilike.%${q}%,category.ilike.%${q}%,brand.ilike.%${q}%`)
+  if (filter === 'out') query = query.eq('in_stock', false)
+  if (filter === 'low') query = query.eq('in_stock', true).not('stock_quantity', 'is', null).lte('stock_quantity', 5)
+
+  const { data, error } = await query
+  if (error) {
+    console.error('[admin/products GET] failed:', error.message)
+    return NextResponse.json({ error: 'Could not load products.' }, { status: 500 })
+  }
+  const rows = data ?? []
+  return NextResponse.json({
+    has_more: rows.length > INVENTORY_PAGE,
+    products: rows.slice(0, INVENTORY_PAGE),
+  })
+}
+
 export async function POST(req: NextRequest) {
   const originCheck = assertSameOrigin(req)
   if (!originCheck.ok) return originCheck.response

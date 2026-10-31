@@ -10,6 +10,8 @@ Lives next to the Next.js web store — web code is not replaced.
 | Browse / search / cart | Ready |
 | Auth, wishlist, addresses, orders | Ready |
 | Native Stripe PaymentSheet checkout | Ready (iOS) against `/api/mobile/checkout/*` |
+| Store manager (staff order queue, status updates, tracking, history) | Ready against `/api/admin/orders*` — same admin password as the web dashboard |
+| Customer feedback form | Ready against `/api/feedback` |
 | Apple Pay | Optional — set `APPLE_PAY_MERCHANT_ID` after Apple Developer + Stripe setup |
 | App Store packaging | Needs your Apple **Development Team**, real app icon art, TestFlight QA |
 | Live customer charges | Still on **Stripe test keys** until you switch to `pk_live_…` |
@@ -45,6 +47,27 @@ iOS uses **Stripe PaymentSheet** → `POST /api/mobile/checkout/payment-intent` 
 Do not open Safari checkout from the app for payment.
 
 After paying: cart clears only when status confirms an order. If confirmation is slow, use **Check payment status** — do not pay twice.
+
+## Store manager
+
+Account → **Store staff → Manage orders**. Sign in with `ADMIN_PASSWORD` (the same password as `/admin/login`).
+The app keeps the signed `admin_session` cookie, so staff stay signed in for the session TTL.
+
+- **Needs action** queue (ordered / processing / ready for pickup) or all orders, a status filter, and search by name, email or `LQ-` number
+- One-tap **Mark <next step>** follows the pickup or shipping flow from `lib/order-status.ts`; pickup orders never offer carrier statuses
+- Tracking number, a note to the customer, and the full status history. Status changes email the customer (server side)
+
+Backed by `GET /api/admin/orders`, `GET /api/admin/orders/:id` and the existing `PATCH /api/admin/orders/:id`.
+
+## Tests
+
+```bash
+bash apple/Tests/run.sh                 # Swift regression checks (mock network)
+node apple/Tests/fixture-server.cjs     # local fixture on 127.0.0.1:4317 for the simulator
+```
+
+The fixture's store-manager password is `fixture-admin`. Checkout routes need Stripe **test** keys in the
+environment; without them the fixture still serves browsing, accounts, feedback and store-manager routes.
 
 ## Regenerating the Xcode project
 

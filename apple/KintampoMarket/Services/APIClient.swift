@@ -17,6 +17,15 @@ struct APIClient {
         return (try? JSONDecoder().decode(Response.self, from: data))?.products ?? []
     }
 
+    /// Top sellers from real checkout data. Empty when the endpoint is not deployed yet.
+    func bestsellers() async -> [Product] {
+        guard let (data, response) = try? await session.data(from: baseURL.appending(path: "api/products/bestsellers")),
+              let http = response as? HTTPURLResponse, http.statusCode == 200
+        else { return [] }
+        struct Response: Decodable { let products: [Product] }
+        return (try? JSONDecoder().decode(Response.self, from: data))?.products ?? []
+    }
+
     func trackOrder(id: String, email: String) async throws -> (TrackedOrder, [OrderLineItem]) {
         var components = URLComponents(url: baseURL.appending(path: "api/orders/track"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
@@ -40,6 +49,25 @@ struct APIClient {
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
             throw AppError.network(message ?? "Could not send reset email.")
+        }
+    }
+
+    func sendFeedback(name: String, email: String, category: String, message: String) async throws {
+        var request = URLRequest(url: baseURL.appending(path: "api/feedback"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(AppConfig.siteURL.absoluteString, forHTTPHeaderField: "Origin")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "name": name,
+            "email": email,
+            "category": category,
+            "message": message,
+            "pageUrl": "ios-app",
+        ])
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            throw AppError.network(message ?? "Could not send feedback.")
         }
     }
 

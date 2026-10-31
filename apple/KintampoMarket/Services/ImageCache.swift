@@ -53,17 +53,20 @@ final class ImageCache {
 
 struct CachedProductImage: View {
     let url: URL?
+    /// `true` shows the whole photo (zoom viewer); the default fills and crops.
+    var fit = false
+    var background: Color = Brand.surface
     @State private var image: PlatformImage?
     @State private var failed = false
 
     var body: some View {
         ZStack {
-            Brand.surface
+            background
             if let image {
                 #if os(macOS)
-                Image(nsImage: image).resizable().scaledToFill()
+                Image(nsImage: image).resizable().aspectRatio(contentMode: fit ? .fit : .fill)
                 #else
-                Image(uiImage: image).resizable().scaledToFill()
+                Image(uiImage: image).resizable().aspectRatio(contentMode: fit ? .fit : .fill)
                 #endif
             } else if failed || url == nil {
                 Image(systemName: "bag.fill")

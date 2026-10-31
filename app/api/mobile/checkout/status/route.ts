@@ -93,6 +93,11 @@ export async function GET(req: NextRequest) {
       totalAmount: order.total_amount,
     })
   } catch (err) {
+    // Unknown or malformed payment id: Stripe answers with resource_missing / 404.
+    const stripeErr = err as { code?: string; statusCode?: number }
+    if (stripeErr?.code === 'resource_missing' || stripeErr?.statusCode === 404) {
+      return NextResponse.json({ error: 'Payment not found.' }, { status: 404 })
+    }
     console.error('[mobile/checkout/status]', err)
     return NextResponse.json({ error: 'Could not check payment status.' }, { status: 500 })
   }

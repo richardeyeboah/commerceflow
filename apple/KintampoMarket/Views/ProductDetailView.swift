@@ -9,6 +9,8 @@ struct ProductDetailView: View {
     @State private var selectedImageIndex = 0
     @State private var variants: [Product] = []
     @State private var related: [Product] = []
+    @State private var buyBlockOffscreen = false
+    @State private var showPhotoViewer = false
     @Bindable private var wishlist = WishlistStore.shared
     @Bindable private var auth = AuthStore.shared
     @Bindable private var cart = CartStore.shared
@@ -125,6 +127,11 @@ struct ProductDetailView: View {
                 }
 
                 purchaseBlock
+                    .onGeometryChange(for: Bool.self) { proxy in
+                        proxy.frame(in: .scrollView).maxY < 0
+                    } action: { offscreen in
+                        withAnimation(.easeOut(duration: 0.2)) { buyBlockOffscreen = offscreen }
+                    }
 
                 if isLoadingDetail, detail.description == nil {
                     ProgressView().frame(maxWidth: .infinity, alignment: .leading)
@@ -162,6 +169,11 @@ struct ProductDetailView: View {
             .padding()
         }
         .background(Brand.surface.ignoresSafeArea())
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if buyBlockOffscreen && detail.effectiveInStock {
+                stickyBuyBar.transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
         .navigationTitle("")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -215,6 +227,46 @@ struct ProductDetailView: View {
         }
     }
 
+    private var whatsAppMessage: String {
+        "Hi Kintampo! I'm asking about \(detail.name) (\(String(format: "$%.2f", detail.price))): "
+            + StorefrontCatalog.publicProductURL(id: detail.id).absoluteString
+    }
+
+    /// Keeps "Add to cart" in reach once the main buy button scrolls away (reviews, related items).
+    private var stickyBuyBar: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(detail.name)
+                    .font(.caption)
+                    .foregroundStyle(Brand.inkMuted)
+                    .lineLimit(1)
+                Text(String(format: "$%.2f", detail.price * Double(quantity)))
+                    .font(.headline)
+                    .foregroundStyle(Brand.ink)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+            Spacer(minLength: 8)
+            Button {
+                CartStore.shared.add(detail, quantity: quantity, toast: false)
+                added = true
+            } label: {
+                Label(added ? "Added" : (quantity > 1 ? "Add \(quantity)" : "Add to cart"),
+                      systemImage: added ? "checkmark" : "cart.badge.plus")
+                    .lineLimit(1)
+                    .padding(.horizontal, 18)
+            }
+            .buttonStyle(PrimaryButtonStyle())
+            .fixedSize()
+            .accessibilityIdentifier("stickyAddToCart")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.regularMaterial)
+        .overlay(alignment: .top) { Divider() }
+    }
+
     private var purchaseBlock: some View {
         VStack(spacing: 12) {
             HStack {
@@ -245,7 +297,7 @@ struct ProductDetailView: View {
             }
 
             Button {
-                CartStore.shared.add(detail, quantity: quantity)
+                CartStore.shared.add(detail, quantity: quantity, toast: false)
                 added = true
             } label: {
                 HStack {
@@ -271,6 +323,18 @@ struct ProductDetailView: View {
                         .foregroundStyle(Brand.red)
                 }
             }
+
+            if let url = StoreConfig.whatsAppURL(message: whatsAppMessage) {
+                Link(destination: url) {
+                    Label(detail.effectiveInStock ? "Ask about this on WhatsApp" : "Ask when it's back on WhatsApp",
+                          systemImage: "message.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 44)
+                        .foregroundStyle(Color(hex: 0x128C7E))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color(hex: 0x25D366), lineWidth: 1.5))
+                }
+            }
         }
         .brandCard(padding: 14)
     }
@@ -289,6 +353,10 @@ struct ProductDetailView: View {
                         CachedProductImage(url: url)
                             .frame(height: 300)
                             .clipped()
+                            .contentShape(Rectangle())
+                            .onTapGesture { showPhotoViewer = true }
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityLabel("Photo \(index + 1) of \(urls.count). Opens full screen.")
                             .tag(index)
                     }
                 }
@@ -298,6 +366,24 @@ struct ProductDetailView: View {
                 .frame(height: 300)
                 .background(Brand.card)
                 .clipShape(RoundedRectangle(cornerRadius: Brand.cardRadius, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.caption.weight(.bold))
+                        .padding(8)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .padding(10)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+                #if os(iOS)
+                .fullScreenCover(isPresented: $showPhotoViewer) {
+                    PhotoViewer(urls: urls, index: $selectedImageIndex)
+                }
+                #else
+                .sheet(isPresented: $showPhotoViewer) {
+                    PhotoViewer(urls: urls, index: $selectedImageIndex).frame(minWidth: 600, minHeight: 600)
+                }
+                #endif
 
                 if urls.count > 1 {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -356,5 +442,84 @@ private struct StatusChip: View {
             .foregroundStyle(filled ? color : Brand.inkMuted)
             .overlay(Capsule().stroke(filled ? Color.clear : Brand.line))
             .clipShape(Capsule())
+    }
+}
+
+/// Full-screen product photos: swipe between them, pinch or double-tap to zoom.
+private struct PhotoViewer: View {
+    let urls: [URL]
+    @Binding var index: Int
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            TabView(selection: $index) {
+                ForEach(Array(urls.enumerated()), id: \.offset) { offset, url in
+                    ZoomableImage(url: url).tag(offset)
+                }
+            }
+            #if os(iOS)
+            .tabViewStyle(.page(indexDisplayMode: urls.count > 1 ? .always : .never))
+            #endif
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(.white.opacity(0.18), in: Circle())
+            }
+            .padding()
+            .accessibilityLabel("Close photos")
+        }
+    }
+}
+
+private struct ZoomableImage: View {
+    let url: URL
+    @State private var scale: CGFloat = 1
+    @State private var lastScale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    var body: some View {
+        CachedProductImage(url: url, fit: true, background: .black)
+            .scaleEffect(scale)
+            .offset(offset)
+            .simultaneousGesture(magnify)
+            // Pan only while zoomed, so a normal swipe still pages between photos.
+            .gesture(pan, including: scale > 1 ? .all : .none)
+            .onTapGesture(count: 2) {
+                withAnimation(.snappy(duration: 0.2)) {
+                    if scale > 1 { reset() } else { scale = 2.5; lastScale = 2.5 }
+                }
+            }
+            .accessibilityLabel("Product photo")
+            .accessibilityHint("Double-tap to zoom")
+    }
+
+    private var magnify: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in scale = min(4, max(1, lastScale * value.magnification)) }
+            .onEnded { _ in
+                lastScale = scale
+                if scale <= 1 { withAnimation(.snappy(duration: 0.2)) { reset() } }
+            }
+    }
+
+    private var pan: some Gesture {
+        DragGesture()
+            .onChanged { value in
+                offset = CGSize(width: lastOffset.width + value.translation.width,
+                                height: lastOffset.height + value.translation.height)
+            }
+            .onEnded { _ in lastOffset = offset }
+    }
+
+    private func reset() {
+        scale = 1
+        lastScale = 1
+        offset = .zero
+        lastOffset = .zero
     }
 }

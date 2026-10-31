@@ -44,6 +44,16 @@ final class CatalogStore {
         return Date().timeIntervalSince(lastFetchedAt) < cacheTTL
     }
 
+    /// Shop filters: Fashion (when stocked) then categories that have in-stock items, biggest first.
+    var stockedFilters: [String] {
+        let counts = Dictionary(grouping: products.filter(\.effectiveInStock), by: \.category).mapValues(\.count)
+        let categories = counts.filter { !$0.key.isEmpty }
+            .sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
+            .map(\.key)
+        let hasFashion = categories.contains { StoreConfig.fashionCategories.contains($0) }
+        return (hasFashion ? [StoreConfig.fashionGroup] : []) + categories
+    }
+
     func featured(limit: Int = 12) -> [Product] {
         Array(products.filter(\.effectiveInStock).prefix(limit))
     }
@@ -56,7 +66,7 @@ final class CatalogStore {
     ) -> [Product] {
         var list = products
         if let category, !category.isEmpty {
-            list = list.filter { $0.category == category }
+            list = list.filter { StoreConfig.matches($0.category, filter: category) }
         }
         if inStockOnly {
             list = list.filter(\.effectiveInStock)

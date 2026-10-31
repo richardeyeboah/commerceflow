@@ -10,6 +10,9 @@ enum Brand {
     static let inkMuted = Color(hex: 0x57534E)
     static let line = Color(hex: 0xE7E5E4)
     static let success = Color(hex: 0x15803D)
+    /// Logo colors — the green and gold of the Kintampo "K" mark.
+    static let forest = Color(hex: 0x0B5A48)
+    static let kenteGold = Color(hex: 0xF2C14E)
 
     static let cardRadius: CGFloat = 12
     static let cardShadow = Color.black.opacity(0.06)
@@ -89,12 +92,18 @@ struct SectionHeader: View {
     let title: String
     var action: (() -> Void)? = nil
     var actionLabel = "See all"
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
+        // At accessibility sizes the action moves under the title so words don't break.
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
+        layout {
             Text(title)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(Brand.ink)
-            Spacer()
+            if !typeSize.isAccessibilitySize { Spacer() }
             if let action {
                 Button(actionLabel, action: action)
                     .font(.subheadline.weight(.medium))
