@@ -17,6 +17,15 @@ struct APIClient {
         return (try? JSONDecoder().decode(Response.self, from: data))?.products ?? []
     }
 
+    /// Top sellers from real checkout data. Empty when the endpoint is not deployed yet.
+    func bestsellers() async -> [Product] {
+        guard let (data, response) = try? await session.data(from: baseURL.appending(path: "api/products/bestsellers")),
+              let http = response as? HTTPURLResponse, http.statusCode == 200
+        else { return [] }
+        struct Response: Decodable { let products: [Product] }
+        return (try? JSONDecoder().decode(Response.self, from: data))?.products ?? []
+    }
+
     func trackOrder(id: String, email: String) async throws -> (TrackedOrder, [OrderLineItem]) {
         var components = URLComponents(url: baseURL.appending(path: "api/orders/track"), resolvingAgainstBaseURL: false)!
         components.queryItems = [

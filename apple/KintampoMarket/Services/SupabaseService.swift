@@ -251,6 +251,17 @@ actor SupabaseService {
         _ = try await performRaw(request)
     }
 
+    /// Same rows the website's announcement bar shows; edited from the admin dashboard.
+    func fetchAnnouncements() async throws -> [Announcement] {
+        var components = URLComponents(url: baseURL.appending(path: "rest/v1/site_announcements"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "select", value: "id,message,href"),
+            URLQueryItem(name: "active", value: "eq.true"),
+            URLQueryItem(name: "order", value: "sort_order.asc"),
+        ]
+        return try await perform(try makeRequest(url: components.url!, method: "GET"))
+    }
+
     func fetchBundles() async throws -> [ProductBundle] {
         var components = URLComponents(url: baseURL.appending(path: "rest/v1/product_bundles"), resolvingAgainstBaseURL: false)!
         components.queryItems = [

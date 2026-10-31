@@ -4,10 +4,16 @@ struct HomeView: View {
     @Bindable private var catalog = CatalogStore.shared
     @Bindable private var recent = RecentlyViewedStore.shared
     @Bindable private var cart = CartStore.shared
+    @State private var announcements: [Announcement] = Announcement.fallback
+    @State private var bestsellers: [Product] = []
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                AnnouncementTicker(items: announcements) { open($0) }
+                    .padding(.horizontal)
+
                 WelcomeHero(inStock: catalog.products.filter(\.effectiveInStock).count)
                     .padding(.horizontal)
 
@@ -18,6 +24,16 @@ struct HomeView: View {
                 utilityStrip
 
                 categories
+
+                if !bestsellers.isEmpty {
+                    productShelf("Bestsellers", subtitle: "Most ordered by our customers", products: bestsellers)
+                }
+
+                productShelf("Yam, fufu & staples", subtitle: "Plantain, fufu, yam and pantry essentials", products: staples)
+
+                WhatsAppCard().padding(.horizontal)
+
+                productShelf("Trending this week", subtitle: "Popular across the store", products: trending)
 
                 newArrivals
 
@@ -59,7 +75,11 @@ struct HomeView: View {
                 .accessibilityLabel("Search")
             }
         }
-        .refreshable { await catalog.reload() }
+        .refreshable {
+            await catalog.reload()
+            await loadMerchandising()
+        }
+        .task { await loadMerchandising() }
         .navigationDestination(for: Product.self) { ProductDetailView(product: $0) }
         .navigationDestination(for: String.self) { ShopView(initialCategory: $0) }
     }
@@ -73,6 +93,52 @@ struct HomeView: View {
                 UtilityChip(icon: "lock.fill", text: "Secure checkout")
             }
             .padding(.horizontal)
+        }
+    }
+
+    private var staples: [Product] { HomeMerchandising.staples(from: catalog.products) }
+
+    private var trending: [Product] {
+        let shown = Set((staples + bestsellers).map(\.id))
+        return HomeMerchandising.trending(from: catalog.products, excluding: shown)
+    }
+
+    private func loadMerchandising() async {
+        if let rows = try? await SupabaseService.shared.fetchAnnouncements(), !rows.isEmpty {
+            announcements = rows
+        }
+        bestsellers = StorefrontCatalog.visible(await APIClient.shared.bestsellers())
+    }
+
+    /// Product links stay in the app; anything else opens the website page.
+    private func open(_ href: String) {
+        let url = href.hasPrefix("http") ? URL(string: href) : URL(string: href, relativeTo: AppConfig.siteURL)?.absoluteURL
+        guard let url else { return }
+        if AppRouter.productID(from: url) != nil { AppRouter.shared.open(url) } else { openURL(url) }
+    }
+
+    @ViewBuilder
+    private func productShelf(_ title: String, subtitle: String, products: [Product]) -> some View {
+        if !products.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    SectionHeader(title: title)
+                    Text(subtitle).font(.caption).foregroundStyle(Brand.inkMuted)
+                }
+                .padding(.horizontal)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(products) { product in
+                            NavigationLink(value: product) {
+                                ProductCard(product: product, compact: true)
+                                    .frame(width: 150)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+            }
         }
     }
 
@@ -178,6 +244,81 @@ struct HomeView: View {
     }
 }
 
+/// Rotating strip of the website's admin-managed announcements.
+private struct AnnouncementTicker: View {
+    let items: [Announcement]
+    let onOpen: (String) -> Void
+    @State private var index = 0
+
+    var body: some View {
+        if let item = items.isEmpty ? nil : items[index % items.count] {
+            Button {
+                if let href = item.href, !href.isEmpty { onOpen(href) }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "megaphone.fill").font(.caption).foregroundStyle(Brand.kenteGold)
+                    Text(item.message)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .id(item.id)
+                        .transition(.push(from: .bottom))
+                    Spacer(minLength: 0)
+                    if item.href?.isEmpty == false {
+                        Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.white.opacity(0.7))
+                    }
+                }
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .background(Brand.forest)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipped()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(item.message)
+            .task(id: items.count) {
+                guard items.count > 1 else { return }
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(4))
+                    withAnimation(.easeInOut(duration: 0.35)) { index += 1 }
+                }
+            }
+        }
+    }
+}
+
+/// WhatsApp is how many customers already order from the store.
+private struct WhatsAppCard: View {
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Button {
+            if let url = StoreConfig.whatsAppURL(message: "Hi Kintampo! I'd like to place an order / ask a question.") {
+                openURL(url)
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "message.fill")
+                    .font(.title3)
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(Color(hex: 0x25D366))
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Order or ask on WhatsApp").font(.subheadline.weight(.semibold)).foregroundStyle(Brand.ink)
+                    Text("Can't find something? Message the store.").font(.caption).foregroundStyle(Brand.inkMuted)
+                }
+                Spacer()
+                Image(systemName: "arrow.up.right").font(.caption.weight(.bold)).foregroundStyle(Brand.inkMuted)
+            }
+            .brandCard(padding: 12)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens WhatsApp")
+    }
+}
+
 /// Welcome banner at the top of Home: store photo, greeting, and the two main ways in.
 private struct WelcomeHero: View {
     let inStock: Int
@@ -232,7 +373,7 @@ private struct WelcomeHero: View {
                             .foregroundStyle(.white)
                             .clipShape(Capsule())
                     }
-                    NavigationLink(value: "African Prints") {
+                    NavigationLink(value: StoreConfig.fashionGroup) {
                         Text("Shop fashion")
                             .font(.subheadline.weight(.semibold))
                             .padding(.horizontal, 16)

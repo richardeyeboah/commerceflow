@@ -270,3 +270,17 @@ enum OrderStatusFlow {
         }
     }
 }
+
+// MARK: - Home merchandising
+
+struct Announcement: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    let message: String
+    let href: String?
+
+    /// Mirrors the website's fallback bar when the table is empty or unreachable.
+    static let fallback: [Announcement] = [
+        Announcement(id: "fallback-0", message: "Nationwide shipping · Free standard on $\(StoreConfig.freeShippingThreshold)+ · Pickup in Columbus", href: nil),
+        Announcement(id: "fallback-1", message: "Store pickup · \(StoreConfig.address)", href: nil),
+    ]
+}

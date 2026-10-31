@@ -23,6 +23,16 @@ enum StoreConfig {
 
     static let freeShippingThreshold = 120
 
+    /// `wa.me` chat link to the store with a prefilled message (US numbers get the +1 country code).
+    static func whatsAppURL(message: String) -> URL? {
+        var digits = AppConfig.whatsAppNumber.filter(\.isNumber)
+        if digits.isEmpty { digits = phone.filter(\.isNumber) }
+        if digits.count == 10 { digits = "1" + digits }
+        var components = URLComponents(string: "https://wa.me/\(digits)")
+        components?.queryItems = [URLQueryItem(name: "text", value: message)]
+        return components?.url
+    }
+
     /// Category photos the website already serves from `public/images/categories`.
     static func categoryImageURL(_ category: String) -> URL? {
         let files = [
@@ -37,11 +47,14 @@ enum StoreConfig {
         return AppConfig.siteURL.appending(path: "images/categories/\(file)")
     }
 
-    static let productCategories: [String] = [
-        "African Prints", "Alcohol", "Beverages", "Bread", "Brocade", "Canned",
-        "Caribbean product", "Cosmetics", "Dairy And Tea", "Flours & Rice",
-        "Fresh Produce", "Frozen foods", "Hair & Braiding", "Headtie", "Kente",
-        "Lace", "Meat and Seafood", "Motherland", "Non food", "Ready-to-wear",
-        "Snack", "Spices",
+    /// Matches `FASHION_CATEGORIES` + legacy `Wax` in `lib/constants/categories.ts`.
+    static let fashionGroup = "Fashion"
+    static let fashionCategories: Set<String> = [
+        "African Prints", "Lace", "Headtie", "Kente", "Brocade", "Ready-to-wear", "Hair & Braiding", "Wax",
     ]
+
+    /// True when `product` belongs to a Shop filter (a real category or the Fashion group).
+    static func matches(_ category: String, filter: String) -> Bool {
+        filter == fashionGroup ? fashionCategories.contains(category) : category == filter
+    }
 }

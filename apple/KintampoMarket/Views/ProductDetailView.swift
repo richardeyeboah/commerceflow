@@ -215,6 +215,11 @@ struct ProductDetailView: View {
         }
     }
 
+    private var whatsAppMessage: String {
+        "Hi Kintampo! I'm asking about \(detail.name) (\(String(format: "$%.2f", detail.price))): "
+            + StorefrontCatalog.publicProductURL(id: detail.id).absoluteString
+    }
+
     private var purchaseBlock: some View {
         VStack(spacing: 12) {
             HStack {
@@ -269,6 +274,18 @@ struct ProductDetailView: View {
                     Button("View cart") { AppRouter.shared.requestedTab = 2 }
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Brand.red)
+                }
+            }
+
+            if let url = StoreConfig.whatsAppURL(message: whatsAppMessage) {
+                Link(destination: url) {
+                    Label(detail.effectiveInStock ? "Ask about this on WhatsApp" : "Ask when it's back on WhatsApp",
+                          systemImage: "message.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 44)
+                        .foregroundStyle(Color(hex: 0x128C7E))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color(hex: 0x25D366), lineWidth: 1.5))
                 }
             }
         }

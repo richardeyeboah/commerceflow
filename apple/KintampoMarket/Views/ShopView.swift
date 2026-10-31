@@ -22,10 +22,17 @@ struct ShopView: View {
     private func applyLocalFilters(_ list: [Product]) -> [Product] {
         var filtered = list
         if let selectedCategory, !selectedCategory.isEmpty {
-            filtered = filtered.filter { $0.category == selectedCategory }
+            filtered = filtered.filter { StoreConfig.matches($0.category, filter: selectedCategory) }
         }
         if inStockOnly { filtered = filtered.filter(\.effectiveInStock) }
         return sort.apply(filtered)
+    }
+
+    /// Stocked categories, keeping a deep-linked category visible even if it just sold out.
+    private var chipCategories: [String] {
+        var list = catalog.stockedFilters
+        if let selectedCategory, !list.contains(selectedCategory) { list.insert(selectedCategory, at: 0) }
+        return list
     }
 
     var body: some View {
@@ -35,7 +42,7 @@ struct ShopView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     CategoryChip(title: "All", selected: selectedCategory == nil) { selectedCategory = nil }
-                    ForEach(StoreConfig.productCategories, id: \.self) { cat in
+                    ForEach(chipCategories, id: \.self) { cat in
                         CategoryChip(title: cat, selected: selectedCategory == cat) {
                             selectedCategory = selectedCategory == cat ? nil : cat
                         }
@@ -76,7 +83,7 @@ struct ShopView: View {
 
                 Spacer()
 
-                Text("\(visible.count) items")
+                Text("\(visible.count) item\(visible.count == 1 ? "" : "s")")
                     .font(.caption)
                     .foregroundStyle(Brand.inkMuted)
                     .monospacedDigit()

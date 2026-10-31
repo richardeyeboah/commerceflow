@@ -131,6 +131,31 @@ final class MockHTTP: URLProtocol, @unchecked Sendable {
         check(!OrderStatusFlow.choices(for: "pickup").contains("shipped"), "Pickup orders must not offer carrier statuses")
         check(OrderStatusFlow.next(after: "delivered", shippingMethod: nil) == nil, "Finished orders have no next step")
         check(OrderStatusFlow.label("delivered", shippingMethod: "pickup") == "Picked up", "Collected pickup orders read as picked up")
+        check(StoreConfig.matches("Lace", filter: StoreConfig.fashionGroup), "Fashion filter must include lace")
+        check(!StoreConfig.matches("Spices", filter: StoreConfig.fashionGroup), "Fashion filter must exclude groceries")
+        check(StoreConfig.matches("Spices", filter: "Spices"), "Plain category filter must match exactly")
+        let wa = StoreConfig.whatsAppURL(message: "Hi & hello")?.absoluteString ?? ""
+        check(wa.hasPrefix("https://wa.me/1") && wa.contains("text=Hi%20%26%20hello"), "WhatsApp link must add +1 and encode the message")
+        func shelfProduct(_ id: String, _ name: String, _ category: String, day: Int, image: Bool = true, stock: Bool = true) throws -> Product {
+            let imageJSON = image ? "\"https://x.invalid/\(id).jpg\"" : "null"
+            return try decode("""
+            {"id":"\(id)","name":"\(name)","price":5,"category":"\(category)","in_stock":\(stock),"created_at":"2026-01-0\(day)","image_url":\(imageJSON)}
+            """, as: Product.self)
+        }
+        let shelf = [
+            try shelfProduct("a", "Neat Fufu", "Flours & Rice", day: 6),
+            try shelfProduct("b", "Tanzol Tablet", "Non food", day: 9),
+            try shelfProduct("c", "Gari", "Flours & Rice", day: 5),
+            try shelfProduct("d", "Yam no photo", "Fresh Produce", day: 4, image: false),
+            try shelfProduct("e", "Shea Butter", "Cosmetics", day: 3),
+            try shelfProduct("f", "Cocoa Butter", "Cosmetics", day: 2),
+            try shelfProduct("g", "Sold out Yam", "Fresh Produce", day: 1, stock: false),
+        ]
+        let staples = HomeMerchandising.staples(from: shelf)
+        check(staples.map(\.id) == ["a"], "Staples need stock and a photo")
+        let trending = HomeMerchandising.trending(from: shelf, excluding: Set(staples.map(\.id)))
+        check(trending.first?.id == "c" && !trending.contains { $0.id == "a" }, "Trending leads with groceries and skips staples")
+        check(trending.filter { $0.category == "Cosmetics" }.count == 1, "Trending caps cosmetics at one")
         print("PASS: \(checks) mobile regression checks (mock network; no live payments)")
     }
 }
