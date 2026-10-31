@@ -6,6 +6,7 @@ struct RootTabView: View {
     @Bindable private var router = AppRouter.shared
     @State private var tab = 0
     @State private var shopPath = NavigationPath()
+    @AppStorage("didShowWelcome") private var didShowWelcome = false
 
     var body: some View {
         TabView(selection: $tab) {
@@ -49,6 +50,14 @@ struct RootTabView: View {
             shopPath.append(id)
             router.pendingProductID = nil
         }
+        #if os(iOS)
+        .fullScreenCover(isPresented: Binding(get: { !didShowWelcome }, set: { didShowWelcome = !$0 })) {
+            WelcomeView(
+                onStart: { didShowWelcome = true; tab = 0 },
+                onSignIn: { didShowWelcome = true; tab = 4 }
+            )
+        }
+        #endif
         .onChange(of: router.requestedTab) { _, next in
             guard let next else { return }
             tab = next

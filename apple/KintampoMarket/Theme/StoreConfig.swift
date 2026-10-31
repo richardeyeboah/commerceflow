@@ -21,6 +21,22 @@ enum StoreConfig {
         return "(\(a)) \(b)-\(c)"
     }
 
+    static let freeShippingThreshold = 120
+
+    /// Category photos the website already serves from `public/images/categories`.
+    static func categoryImageURL(_ category: String) -> URL? {
+        let files = [
+            "African Prints": "african-prints.jpg", "Beverages": "beverages.png", "Bread": "bread.png",
+            "Canned": "canned.jpg", "Caribbean product": "caribbean-product.jpg", "Cosmetics": "cosmetics.jpg",
+            "Dairy And Tea": "dairy-and-tea.jpg", "Flours & Rice": "flours-rice.jpg",
+            "Fresh Produce": "fresh-produce.jpg", "Frozen foods": "frozen-foods.jpg",
+            "Meat and Seafood": "meat-seafood.jpg", "Motherland": "motherland.jpg",
+            "Non food": "non-food.jpg", "Snack": "snack.jpg", "Spices": "spices.jpg",
+        ]
+        guard let file = files[category] else { return nil }
+        return AppConfig.siteURL.appending(path: "images/categories/\(file)")
+    }
+
     static let productCategories: [String] = [
         "African Prints", "Alcohol", "Beverages", "Bread", "Brocade", "Canned",
         "Caribbean product", "Cosmetics", "Dairy And Tea", "Flours & Rice",

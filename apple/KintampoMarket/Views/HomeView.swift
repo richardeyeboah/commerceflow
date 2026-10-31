@@ -8,7 +8,8 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                header
+                WelcomeHero(inStock: catalog.products.filter(\.effectiveInStock).count)
+                    .padding(.horizontal)
 
                 if !AppConfig.isConfigured {
                     ConfigBanner().padding(.horizontal)
@@ -36,6 +37,19 @@ struct HomeView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                HStack(spacing: 8) {
+                    Image("LogoMark")
+                        .resizable()
+                        .frame(width: 26, height: 26)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    Text("Kintampo")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(Brand.ink)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Kintampo African Market")
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     AppRouter.shared.requestedTab = 1
@@ -50,51 +64,47 @@ struct HomeView: View {
         .navigationDestination(for: String.self) { ShopView(initialCategory: $0) }
     }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(StoreConfig.shortName)
-                .font(.largeTitle.weight(.bold))
-                .foregroundStyle(Brand.ink)
-            Text(StoreConfig.tagline)
-                .font(.subheadline)
-                .foregroundStyle(Brand.inkMuted)
-        }
-        .padding(.horizontal)
-    }
-
     private var utilityStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                UtilityChip(icon: "bag.fill", text: "\(catalog.products.filter(\.effectiveInStock).count) in stock")
                 UtilityChip(icon: "mappin.and.ellipse", text: "Free pickup · Columbus")
-                UtilityChip(icon: "shippingbox.fill", text: "Ships in 24h")
+                UtilityChip(icon: "shippingbox.fill", text: "Free shipping $\(StoreConfig.freeShippingThreshold)+")
+                UtilityChip(icon: "clock.fill", text: "Ships in 24h")
                 UtilityChip(icon: "lock.fill", text: "Secure checkout")
             }
             .padding(.horizontal)
         }
     }
 
+    /// Departments that actually have stock, biggest first — mirrors the website's department grid.
+    private var departments: [(name: String, count: Int)] {
+        let counts = Dictionary(grouping: catalog.products.filter(\.effectiveInStock), by: \.category)
+            .mapValues(\.count)
+        return counts.filter { !$0.key.isEmpty }
+            .map { (name: $0.key, count: $0.value) }
+            .sorted { $0.count == $1.count ? $0.name < $1.name : $0.count > $1.count }
+    }
+
     private var categories: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Shop by category").padding(.horizontal)
+            SectionHeader(title: "Shop by department", action: { AppRouter.shared.requestedTab = 1 }).padding(.horizontal)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(StoreConfig.productCategories, id: \.self) { cat in
-                        NavigationLink(value: cat) {
-                            Text(cat)
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(Brand.ink)
-                                .padding(.horizontal, 14)
-                                .frame(minHeight: 40)
-                                .background(Brand.card)
-                                .overlay(Capsule().stroke(Brand.line))
-                                .clipShape(Capsule())
+                LazyHGrid(rows: [GridItem(.fixed(118), spacing: 10), GridItem(.fixed(118), spacing: 10)], spacing: 10) {
+                    ForEach(departments, id: \.name) { dept in
+                        NavigationLink(value: dept.name) {
+                            DepartmentTile(
+                                name: dept.name,
+                                count: dept.count,
+                                imageURL: StoreConfig.categoryImageURL(dept.name)
+                                    ?? catalog.products.first { $0.category == dept.name && $0.primaryImageURL != nil }?.primaryImageURL
+                            )
                         }
                         .buttonStyle(.plain)
                     }
                 }
                 .padding(.horizontal)
             }
+            .frame(height: 246)
         }
     }
 
@@ -165,6 +175,119 @@ struct HomeView: View {
             .buttonStyle(.plain)
         }
         .padding(.horizontal)
+    }
+}
+
+/// Welcome banner at the top of Home: store photo, greeting, and the two main ways in.
+private struct WelcomeHero: View {
+    let inStock: Int
+    @Bindable private var auth = AuthStore.shared
+
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        let part = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
+        let first = auth.profile?.fullName?.split(separator: " ").first.map(String.init)
+        return first.map { "\(part), \($0)" } ?? "Akwaaba — welcome"
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            Image("WelcomeHero")
+                .resizable()
+                .scaledToFill()
+                .frame(height: 340)
+                .frame(maxWidth: .infinity)
+                .clipped()
+                .accessibilityHidden(true)
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: Brand.forest.opacity(0.55), location: 0.35),
+                    .init(color: Brand.forest.opacity(0.97), location: 0.75),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            VStack(alignment: .leading, spacing: 10) {
+                Text(greeting.uppercased())
+                    .font(.caption.weight(.bold))
+                    .tracking(1.2)
+                    .foregroundStyle(Brand.kenteGold)
+                Text("Ghana & Caribbean groceries — in stock now.")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(inStock > 0
+                     ? "\(inStock) products · Pickup in Columbus or ships nationwide."
+                     : "Pickup in Columbus or ships nationwide.")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.9))
+                HStack(spacing: 10) {
+                    Button { AppRouter.shared.requestedTab = 1 } label: {
+                        Label("Shop all", systemImage: "arrow.right")
+                            .labelStyle(TrailingIconLabelStyle())
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 16)
+                            .frame(minHeight: 42)
+                            .background(Brand.red)
+                            .foregroundStyle(.white)
+                            .clipShape(Capsule())
+                    }
+                    NavigationLink(value: "African Prints") {
+                        Text("Shop fashion")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 16)
+                            .frame(minHeight: 42)
+                            .background(.white.opacity(0.95))
+                            .foregroundStyle(Brand.ink)
+                            .clipShape(Capsule())
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+            }
+            .padding(18)
+        }
+        .frame(height: 340)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: Brand.cardShadow, radius: 10, y: 4)
+    }
+}
+
+private struct TrailingIconLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 6) { configuration.title; configuration.icon }
+    }
+}
+
+private struct DepartmentTile: View {
+    let name: String
+    let count: Int
+    let imageURL: URL?
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            CachedProductImage(url: imageURL)
+                .frame(width: 150, height: 118)
+                .clipped()
+            LinearGradient(
+                stops: [.init(color: .clear, location: 0.3), .init(color: .black.opacity(0.8), location: 1)],
+                startPoint: .top, endPoint: .bottom
+            )
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .shadow(color: .black.opacity(0.5), radius: 2)
+                Text("\(count) item\(count == 1 ? "" : "s")")
+                    .font(.caption2)
+                    .opacity(0.85)
+            }
+            .foregroundStyle(.white)
+            .padding(10)
+        }
+        .frame(width: 150, height: 118)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 
