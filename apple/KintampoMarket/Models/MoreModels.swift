@@ -263,7 +263,10 @@ enum OrderStatusFlow {
 
     static func label(_ status: String, shippingMethod: String?) -> String {
         if status == "delivered", isPickup(shippingMethod) { return "Picked up" }
-        if status == "out_for_delivery" { return "Out for Delivery" }
-        return status.replacingOccurrences(of: "_", with: " ").capitalized
+        switch status {
+        case "ready_for_pickup": return "Ready for pickup"
+        case "out_for_delivery": return "Out for delivery"
+        default: return status.replacingOccurrences(of: "_", with: " ").capitalized
+        }
     }
 }

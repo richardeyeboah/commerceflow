@@ -10,19 +10,19 @@ struct RootTabView: View {
     var body: some View {
         TabView(selection: $tab) {
             NavigationStack {
-                HomeView()
+                HomeView().testModeBanner()
             }
             .tabItem { Label("Home", systemImage: "house.fill") }
             .tag(0)
 
             NavigationStack(path: $shopPath) {
-                ShopView()
+                ShopView().testModeBanner()
             }
             .tabItem { Label("Shop", systemImage: "bag.fill") }
             .tag(1)
 
             NavigationStack {
-                CartView()
+                CartView().testModeBanner()
             }
             .tabItem {
                 Label("Cart", systemImage: "cart.fill")
@@ -31,13 +31,13 @@ struct RootTabView: View {
             .tag(2)
 
             NavigationStack {
-                TrackOrderView()
+                TrackOrderView().testModeBanner()
             }
             .tabItem { Label("Track", systemImage: "shippingbox.fill") }
             .tag(3)
 
             NavigationStack {
-                AccountView()
+                AccountView().testModeBanner()
             }
             .tabItem { Label("Account", systemImage: "person.fill") }
             .tag(4)
@@ -54,7 +54,13 @@ struct RootTabView: View {
             tab = next
             router.requestedTab = nil
         }
-        .safeAreaInset(edge: .top) {
+    }
+}
+
+private extension View {
+    /// Sits under each tab's navigation bar so it never covers the title.
+    func testModeBanner() -> some View {
+        safeAreaInset(edge: .top, spacing: 0) {
             if AppConfig.fixtureURL != nil {
                 Text("TEST MODE — sample products and test payments")
                     .font(.caption).frame(maxWidth: .infinity).padding(6)
