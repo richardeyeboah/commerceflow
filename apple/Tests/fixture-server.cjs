@@ -11,6 +11,10 @@ const products = [
   { id: '11111111-1111-4111-8111-111111111111', name: 'Test Yam', price: 5, category: 'Fresh Produce', in_stock: true, created_at: createdAt, stock_quantity: 2 },
   { id: '22222222-2222-4222-8222-222222222222', name: 'Test Rice', price: 10, category: 'Flours & Rice', in_stock: true, created_at: createdAt, stock_quantity: 8 },
 ]
+const fixtureReviews = [
+  { id: 'r-1', product_id: '11111111-1111-4111-8111-111111111111', product_name: 'Test Yam', reviewer_name: 'Kofi',
+    rating: 5, comment: 'Fresh and well packed.', created_at: '2026-01-02T00:00:00Z', approved: false },
+]
 let profile = { id: '33333333-3333-4333-8333-333333333333', full_name: 'Test Shopper', phone: '2025550148', role: 'customer' }
 const intents = new Map()
 const orders = []
@@ -36,7 +40,11 @@ http.createServer(async (req, res) => {
     if (url.pathname === '/rest/v1/profiles') return send(200, [profile])
     if (url.pathname === '/rest/v1/products') {
       const id = url.searchParams.get('id')
-      return send(200, id?.startsWith('eq.') ? products.filter(p => p.id === id.slice(3)) : products)
+      if (id?.startsWith('eq.')) return send(200, products.filter(p => p.id === id.slice(3)))
+      // Mirror PostgREST `name=ilike.*term*` so search behaves like production.
+      const name = url.searchParams.get('name')
+      const term = name?.startsWith('ilike.') ? name.slice(6).replace(/\*/g, '').toLowerCase() : ''
+      return send(200, term ? products.filter(p => p.name.toLowerCase().includes(term)) : products)
     }
     if (url.pathname === '/rest/v1/orders') return send(200, orders)
     if (url.pathname.startsWith('/rest/v1/')) return send(200, [])
@@ -72,6 +80,47 @@ http.createServer(async (req, res) => {
         res.setHeader('Set-Cookie', 'admin_session=; Path=/; Max-Age=0')
         return send(200, { success: true })
       }
+      if (url.pathname === '/api/admin/summary') {
+        const list = allOrders()
+        const gross = list.reduce((sum, o) => sum + Number(o.total_amount ?? 0), 0)
+        return send(200, {
+          range: url.searchParams.get('range') ?? 'today', label: 'Today', gross, net_revenue: gross,
+          orders: list.length, units: 3, average_order: list.length ? gross / list.length : 0, unpaid_count: 0,
+          previous_gross: gross / 2, previous_orders: 1,
+          needs_action: list.filter(o => ['ordered', 'processing', 'ready_for_pickup'].includes(o.status)).length,
+          ready_for_pickup: list.filter(o => o.status === 'ready_for_pickup').length,
+          pending_reviews: fixtureReviews.length, out_of_stock: products.filter(p => !p.in_stock).length,
+          low_stock: products.filter(p => p.in_stock && p.stock_quantity != null && p.stock_quantity <= 5)
+            .map(p => ({ id: p.id, name: p.name, stock_quantity: p.stock_quantity, image_url: null })),
+          best_sellers: [{ product_id: products[0].id, name: products[0].name, units: 3, revenue: 15 }],
+          recent_orders: list.slice(0, 5),
+        })
+      }
+      if (url.pathname === '/api/admin/products' && req.method === 'GET') {
+        const q = (url.searchParams.get('q') ?? '').toLowerCase()
+        const filter = url.searchParams.get('filter')
+        const list = products.filter(p => (!q || p.name.toLowerCase().includes(q)) &&
+          (filter !== 'out' || !p.in_stock) &&
+          (filter !== 'low' || (p.in_stock && p.stock_quantity != null && p.stock_quantity <= 5)))
+        return send(200, { has_more: false, products: list })
+      }
+      const productPatch = products.find(p => url.pathname === `/api/admin/products/${p.id}`)
+      if (productPatch && req.method === 'PATCH') {
+        if (typeof body.price === 'number') productPatch.price = body.price
+        if ('stock_quantity' in body) productPatch.stock_quantity = body.stock_quantity
+        productPatch.in_stock = body.stock_quantity != null ? body.stock_quantity > 0 : Boolean(body.in_stock)
+        return send(200, productPatch)
+      }
+      if (url.pathname === '/api/admin/products/bulk-stock') {
+        for (const p of products) if (body.ids?.includes(p.id)) p.in_stock = body.in_stock
+        return send(200, { ok: true })
+      }
+      if (url.pathname === '/api/admin/reviews') return send(200, { reviews: fixtureReviews })
+      const review = fixtureReviews.find(r => url.pathname.startsWith(`/api/admin/reviews/${r.id}`))
+      if (review) {
+        fixtureReviews.splice(fixtureReviews.indexOf(review), 1)
+        return send(200, { ok: true })
+      }
       if (url.pathname === '/api/admin/orders') {
         const status = url.searchParams.get('status')
         const q = (url.searchParams.get('q') ?? '').toLowerCase()
@@ -80,7 +129,15 @@ http.createServer(async (req, res) => {
           (!status || o.status === status) &&
           (!needsAction || ['ordered', 'processing', 'ready_for_pickup'].includes(o.status)) &&
           (!q || `${o.customer_name} ${o.customer_email} lq-${o.order_number}`.toLowerCase().includes(q)))
-        return send(200, { queue: needsAction ? 'needs_action' : 'all', orders: list })
+        const offset = Number(url.searchParams.get('offset') ?? 0)
+        const counts = {}
+        for (const o of allOrders()) counts[o.status] = (counts[o.status] ?? 0) + 1
+        return send(200, {
+          queue: needsAction ? 'needs_action' : 'all',
+          has_more: list.length > offset + 50,
+          ...(offset === 0 ? { counts } : {}),
+          orders: list.slice(offset, offset + 50),
+        })
       }
       const order = allOrders().find(o => url.pathname === `/api/admin/orders/${o.id}`)
       if (!order) return send(404, { error: 'Order not found.' })

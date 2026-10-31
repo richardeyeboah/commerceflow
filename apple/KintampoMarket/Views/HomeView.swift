@@ -6,7 +6,10 @@ struct HomeView: View {
     @Bindable private var cart = CartStore.shared
     @State private var announcements: [Announcement] = Announcement.fallback
     @State private var bestsellers: [Product] = []
+    @State private var buyAgain: [Product] = []
+    @Bindable private var auth = AuthStore.shared
     @Environment(\.openURL) private var openURL
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         ScrollView {
@@ -24,6 +27,10 @@ struct HomeView: View {
                 utilityStrip
 
                 categories
+
+                if !buyAgain.isEmpty {
+                    productShelf("Buy it again", subtitle: "Restock from your past orders", products: buyAgain)
+                }
 
                 if !bestsellers.isEmpty {
                     productShelf("Bestsellers", subtitle: "Most ordered by our customers", products: bestsellers)
@@ -80,6 +87,7 @@ struct HomeView: View {
             await loadMerchandising()
         }
         .task { await loadMerchandising() }
+        .task(id: auth.userId) { await loadBuyAgain() }
         .navigationDestination(for: Product.self) { ProductDetailView(product: $0) }
         .navigationDestination(for: String.self) { ShopView(initialCategory: $0) }
     }
@@ -110,6 +118,32 @@ struct HomeView: View {
         bestsellers = StorefrontCatalog.visible(await APIClient.shared.bestsellers())
     }
 
+    /// Items from the customer's last few orders, most often bought first, that are in stock now.
+    private func loadBuyAgain() async {
+        guard auth.isSignedIn,
+              let recent = try? await SupabaseService.shared.fetchMyOrders(pageSize: 5).orders,
+              !recent.isEmpty
+        else {
+            buyAgain = []
+            return
+        }
+        var counts: [String: Int] = [:]
+        await withTaskGroup(of: [OrderLineItem].self) { group in
+            for order in recent {
+                group.addTask { (try? await SupabaseService.shared.fetchOrderItems(orderID: order.id)) ?? [] }
+            }
+            for await items in group {
+                for item in items {
+                    if let id = item.productId { counts[id, default: 0] += item.quantity }
+                }
+            }
+        }
+        let ranked = counts.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map(\.key)
+        guard let products = try? await SupabaseService.shared.fetchProductsByIDs(Array(ranked.prefix(30))) else { return }
+        let byID = Dictionary(uniqueKeysWithValues: StorefrontCatalog.visible(products).map { ($0.id, $0) })
+        buyAgain = Array(ranked.compactMap { byID[$0] }.filter(\.effectiveInStock).prefix(10))
+    }
+
     /// Product links stay in the app; anything else opens the website page.
     private func open(_ href: String) {
         let url = href.hasPrefix("http") ? URL(string: href) : URL(string: href, relativeTo: AppConfig.siteURL)?.absoluteURL
@@ -131,7 +165,7 @@ struct HomeView: View {
                         ForEach(products) { product in
                             NavigationLink(value: product) {
                                 ProductCard(product: product, compact: true)
-                                    .frame(width: 150)
+                                    .frame(width: typeSize.isAccessibilitySize ? 240 : 150)
                             }
                             .buttonStyle(.plain)
                         }
@@ -152,10 +186,11 @@ struct HomeView: View {
     }
 
     private var categories: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let tile = DepartmentTile.size(for: typeSize)
+        return VStack(alignment: .leading, spacing: 12) {
             SectionHeader(title: "Shop by department", action: { AppRouter.shared.requestedTab = 1 }).padding(.horizontal)
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHGrid(rows: [GridItem(.fixed(118), spacing: 10), GridItem(.fixed(118), spacing: 10)], spacing: 10) {
+                LazyHGrid(rows: [GridItem(.fixed(tile.height), spacing: 10), GridItem(.fixed(tile.height), spacing: 10)], spacing: 10) {
                     ForEach(departments, id: \.name) { dept in
                         NavigationLink(value: dept.name) {
                             DepartmentTile(
@@ -170,7 +205,7 @@ struct HomeView: View {
                 }
                 .padding(.horizontal)
             }
-            .frame(height: 246)
+            .frame(height: tile.height * 2 + 10)
         }
     }
 
@@ -194,7 +229,7 @@ struct HomeView: View {
                 .brandCard(padding: 20)
                 .padding(.horizontal)
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 280 : 150), spacing: 12)], spacing: 12) {
                     ForEach(catalog.featured(limit: 12)) { product in
                         NavigationLink(value: product) {
                             ProductCard(product: product)
@@ -249,6 +284,7 @@ private struct AnnouncementTicker: View {
     let items: [Announcement]
     let onOpen: (String) -> Void
     @State private var index = 0
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         if let item = items.isEmpty ? nil : items[index % items.count] {
@@ -260,7 +296,7 @@ private struct AnnouncementTicker: View {
                     Text(item.message)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.white)
-                        .lineLimit(2)
+                        .lineLimit(typeSize.isAccessibilitySize ? 6 : 2)
                         .multilineTextAlignment(.leading)
                         .id(item.id)
                         .transition(.push(from: .bottom))
@@ -291,6 +327,7 @@ private struct AnnouncementTicker: View {
 /// WhatsApp is how many customers already order from the store.
 private struct WhatsAppCard: View {
     @Environment(\.openURL) private var openURL
+    @ScaledMetric(relativeTo: .title3) private var iconSize: CGFloat = 44
 
     var body: some View {
         Button {
@@ -302,7 +339,7 @@ private struct WhatsAppCard: View {
                 Image(systemName: "message.fill")
                     .font(.title3)
                     .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
+                    .frame(width: iconSize, height: iconSize)
                     .background(Color(hex: 0x25D366))
                     .clipShape(Circle())
                 VStack(alignment: .leading, spacing: 2) {
@@ -320,9 +357,11 @@ private struct WhatsAppCard: View {
 }
 
 /// Welcome banner at the top of Home: store photo, greeting, and the two main ways in.
+/// The photo is a background, so the text sets the height and can grow with Dynamic Type.
 private struct WelcomeHero: View {
     let inStock: Int
     @Bindable private var auth = AuthStore.shared
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var greeting: String {
         let hour = Calendar.current.component(.hour, from: Date())
@@ -332,65 +371,76 @@ private struct WelcomeHero: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            Image("WelcomeHero")
-                .resizable()
-                .scaledToFill()
-                .frame(height: 340)
-                .frame(maxWidth: .infinity)
-                .clipped()
-                .accessibilityHidden(true)
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0),
-                    .init(color: Brand.forest.opacity(0.55), location: 0.35),
-                    .init(color: Brand.forest.opacity(0.97), location: 0.75),
-                ],
-                startPoint: .top, endPoint: .bottom
-            )
-            VStack(alignment: .leading, spacing: 10) {
-                Text(greeting.uppercased())
-                    .font(.caption.weight(.bold))
-                    .tracking(1.2)
-                    .foregroundStyle(Brand.kenteGold)
-                Text("Ghana & Caribbean groceries — in stock now.")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(inStock > 0
-                     ? "\(inStock) products · Pickup in Columbus or ships nationwide."
-                     : "Pickup in Columbus or ships nationwide.")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.9))
-                HStack(spacing: 10) {
-                    Button { AppRouter.shared.requestedTab = 1 } label: {
-                        Label("Shop all", systemImage: "arrow.right")
-                            .labelStyle(TrailingIconLabelStyle())
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 16)
-                            .frame(minHeight: 42)
-                            .background(Brand.red)
-                            .foregroundStyle(.white)
-                            .clipShape(Capsule())
-                    }
-                    NavigationLink(value: StoreConfig.fashionGroup) {
-                        Text("Shop fashion")
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 16)
-                            .frame(minHeight: 42)
-                            .background(.white.opacity(0.95))
-                            .foregroundStyle(Brand.ink)
-                            .clipShape(Capsule())
-                    }
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 4)
-            }
-            .padding(18)
+        VStack(alignment: .leading, spacing: 10) {
+            Text(greeting.uppercased())
+                .font(.caption.weight(.bold))
+                .tracking(1.2)
+                .foregroundStyle(Brand.kenteGold)
+            Text("Ghana & Caribbean groceries — in stock now.")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(inStock > 0
+                 ? "\(inStock) products · Pickup in Columbus or ships nationwide."
+                 : "Pickup in Columbus or ships nationwide.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+            buttons.padding(.top, 4)
         }
-        .frame(height: 340)
+        .padding(18)
+        .padding(.top, 120)
+        .frame(maxWidth: .infinity, minHeight: 340, alignment: .bottomLeading)
+        .background {
+            ZStack {
+                Image("WelcomeHero")
+                    .resizable()
+                    .scaledToFill()
+                    .accessibilityHidden(true)
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0),
+                        .init(color: Brand.forest.opacity(0.55), location: 0.3),
+                        .init(color: Brand.forest.opacity(0.97), location: 0.7),
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                )
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .shadow(color: Brand.cardShadow, radius: 10, y: 4)
+    }
+
+    /// Side by side normally; stacked full-width at accessibility sizes so labels never truncate.
+    private var buttons: some View {
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
+            : AnyLayout(HStackLayout(spacing: 10))
+        return layout {
+            Button { AppRouter.shared.requestedTab = 1 } label: {
+                Label("Shop all", systemImage: "arrow.right")
+                    .labelStyle(TrailingIconLabelStyle())
+                    .heroButton(background: Brand.red, foreground: .white, fill: typeSize.isAccessibilitySize)
+            }
+            NavigationLink(value: StoreConfig.fashionGroup) {
+                Text("Shop fashion")
+                    .heroButton(background: .white.opacity(0.95), foreground: Brand.ink, fill: typeSize.isAccessibilitySize)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private extension View {
+    func heroButton(background: Color, foreground: Color, fill: Bool) -> some View {
+        font(.subheadline.weight(.semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .frame(maxWidth: fill ? .infinity : nil, minHeight: 42)
+            .background(background)
+            .foregroundStyle(foreground)
+            .clipShape(Capsule())
     }
 }
 
@@ -404,29 +454,43 @@ private struct DepartmentTile: View {
     let name: String
     let count: Int
     let imageURL: URL?
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// Grows with Dynamic Type so the name and count always fit.
+    static func size(for typeSize: DynamicTypeSize) -> CGSize {
+        switch typeSize {
+        case ...DynamicTypeSize.large: CGSize(width: 150, height: 118)
+        case ...DynamicTypeSize.xxxLarge: CGSize(width: 170, height: 136)
+        case ...DynamicTypeSize.accessibility2: CGSize(width: 220, height: 170)
+        default: CGSize(width: 260, height: 210)
+        }
+    }
 
     var body: some View {
+        let size = Self.size(for: typeSize)
         ZStack(alignment: .bottomLeading) {
             CachedProductImage(url: imageURL)
-                .frame(width: 150, height: 118)
+                .frame(width: size.width, height: size.height)
                 .clipped()
             LinearGradient(
-                stops: [.init(color: .clear, location: 0.3), .init(color: .black.opacity(0.8), location: 1)],
+                stops: [.init(color: .clear, location: 0.2), .init(color: .black.opacity(0.85), location: 1)],
                 startPoint: .top, endPoint: .bottom
             )
             VStack(alignment: .leading, spacing: 1) {
                 Text(name)
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
                     .shadow(color: .black.opacity(0.5), radius: 2)
                 Text("\(count) item\(count == 1 ? "" : "s")")
                     .font(.caption2)
+                    .lineLimit(1)
                     .opacity(0.85)
             }
             .foregroundStyle(.white)
             .padding(10)
         }
-        .frame(width: 150, height: 118)
+        .frame(width: size.width, height: size.height)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .combine)
     }

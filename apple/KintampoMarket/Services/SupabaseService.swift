@@ -129,6 +129,49 @@ actor SupabaseService {
         return result
     }
 
+    /// Sign in with Apple: the identity token from AuthenticationServices plus the raw nonce
+    /// whose SHA-256 was sent to Apple.
+    func signInWithIdToken(provider: String, idToken: String, nonce: String) async throws -> AuthSession {
+        let version = generation
+        let result = try await requestSession(grant: "id_token", body: [
+            "provider": provider, "id_token": idToken, "nonce": nonce,
+        ])
+        guard version == generation else { throw AppError.unauthorized }
+        try store(result)
+        return result
+    }
+
+    /// Browser OAuth (Google): authorize URL for the PKCE flow. The callback carries `?code=`.
+    func oauthAuthorizeURL(provider: String, redirectTo: String, codeChallenge: String) -> URL {
+        var components = URLComponents(url: baseURL.appending(path: "auth/v1/authorize"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "provider", value: provider),
+            URLQueryItem(name: "redirect_to", value: redirectTo),
+            URLQueryItem(name: "code_challenge", value: codeChallenge),
+            URLQueryItem(name: "code_challenge_method", value: "s256"),
+        ]
+        return components.url!
+    }
+
+    func exchangeOAuthCode(_ code: String, verifier: String) async throws -> AuthSession {
+        let version = generation
+        let result = try await requestSession(grant: "pkce", body: ["auth_code": code, "code_verifier": verifier])
+        guard version == generation else { throw AppError.unauthorized }
+        try store(result)
+        return result
+    }
+
+    /// Which sign-in providers are switched on in Supabase (`external.google`, `external.apple`).
+    func enabledAuthProviders() async throws -> Set<String> {
+        guard !anonKey.isEmpty else { throw AppError.notConfigured }
+        var request = URLRequest(url: baseURL.appending(path: "auth/v1/settings"))
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        let (data, _) = try await session.data(for: request)
+        struct Settings: Decodable { let external: [String: Bool] }
+        let settings = try JSONDecoder().decode(Settings.self, from: data)
+        return Set(settings.external.filter(\.value).keys)
+    }
+
     private func requestSession(grant: String, body: [String: String]) async throws -> AuthSession {
         guard !anonKey.isEmpty else { throw AppError.notConfigured }
         var components = URLComponents(url: baseURL.appending(path: "auth/v1/token"), resolvingAgainstBaseURL: false)!
@@ -142,7 +185,9 @@ actor SupabaseService {
         guard let http = response as? HTTPURLResponse else { throw AppError.network("No response") }
         guard (200...299).contains(http.statusCode) else {
             if grant == "refresh_token", [400, 401, 403].contains(http.statusCode) { throw AppError.unauthorized }
-            throw AppError.network("Could not sign in. Check your email and password and try again.")
+            throw AppError.network(grant == "password"
+                ? "Could not sign in. Check your email and password and try again."
+                : "Could not finish signing in. Please try again.")
         }
         struct Response: Decodable {
             let access_token: String
@@ -397,14 +442,18 @@ actor SupabaseService {
         }
     }
 
-    func fetchMyOrders() async throws -> [TrackedOrder] {
+    /// One page of the signed-in customer's orders, newest first.
+    /// Asks for one extra row so the caller knows whether another page exists.
+    func fetchMyOrders(offset: Int = 0, pageSize: Int = 20) async throws -> (orders: [TrackedOrder], hasMore: Bool) {
         var components = URLComponents(url: baseURL.appending(path: "rest/v1/orders"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "select", value: "id,order_number,created_at,status,customer_name,customer_email,total_amount,shipping_method,tracking_number"),
-            URLQueryItem(name: "order", value: "created_at.desc"),
-            URLQueryItem(name: "limit", value: "30"),
+            URLQueryItem(name: "order", value: "created_at.desc,id.desc"),
+            URLQueryItem(name: "limit", value: String(pageSize + 1)),
+            URLQueryItem(name: "offset", value: String(offset)),
         ]
-        return try await perform(try makeRequest(url: components.url!, method: "GET", authenticated: true))
+        let rows: [TrackedOrder] = try await perform(try makeRequest(url: components.url!, method: "GET", authenticated: true))
+        return (Array(rows.prefix(pageSize)), rows.count > pageSize)
     }
 
     private func jwtSubject() -> String? {

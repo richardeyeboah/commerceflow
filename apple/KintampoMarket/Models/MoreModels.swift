@@ -170,6 +170,26 @@ enum AdminQueue: String, CaseIterable, Identifiable {
 }
 
 /// Order row from `/api/admin/orders` and the `order` object of `/api/admin/orders/:id`.
+/// One page of the admin queue. `counts` (orders per status) comes with the first page only.
+struct AdminOrderPage: Decodable, Sendable {
+    let orders: [AdminOrder]
+    let hasMore: Bool
+    let counts: [String: Int]?
+
+    enum CodingKeys: String, CodingKey {
+        case orders, counts
+        case hasMore = "has_more"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        orders = try c.decode([AdminOrder].self, forKey: .orders)
+        // Older servers send neither field: treat as a single complete page.
+        hasMore = try c.decodeIfPresent(Bool.self, forKey: .hasMore) ?? false
+        counts = try c.decodeIfPresent([String: Int].self, forKey: .counts)
+    }
+}
+
 struct AdminOrder: Codable, Identifiable, Hashable, Sendable {
     let id: String
     let orderNumber: Int?

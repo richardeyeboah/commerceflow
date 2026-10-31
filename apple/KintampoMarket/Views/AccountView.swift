@@ -39,7 +39,20 @@ struct AccountView: View {
                     NavigationLink("Password") { ChangePasswordView() }
                 }
             } else {
-                Section("Sign in") {
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Sign in to Kintampo")
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(Brand.ink)
+                        Text("Track orders, save favourites and check out faster.")
+                            .font(.subheadline)
+                            .foregroundStyle(Brand.inkMuted)
+                    }
+                    .padding(.vertical, 4)
+                    if auth.hasSocialSignIn {
+                        SocialSignInButtons()
+                            .listRowSeparator(.hidden)
+                    }
                     TextField("Email", text: Binding(
                         get: { auth.email },
                         set: { auth.email = $0 }
@@ -84,16 +97,6 @@ struct AccountView: View {
                 NavigationLink("Send feedback") { FeedbackView() }
             }
 
-            Section {
-                NavigationLink {
-                    AdminOrdersView()
-                } label: {
-                    Label("Manage orders", systemImage: "list.clipboard")
-                }
-            } header: {
-                Text("Store staff")
-            }
-
             Section("Store info") {
                 NavigationLink("FAQ") { StoreWebPage(title: "FAQ", path: "faq") }
                 NavigationLink("Shipping") { StoreWebPage(title: "Shipping", path: "shipping") }
@@ -102,7 +105,7 @@ struct AccountView: View {
                 NavigationLink("Terms") { StoreWebPage(title: "Terms", path: "terms") }
                 #if os(iOS)
                     Button("Order alerts") { Task { await PushRegistration.registerIfPossible(ask: true) } }
-                    Text("Requires a signed Apple Developer build.")
+                    Text("Get a notification when your order is ready or ships.")
                         .font(.caption)
                         .foregroundStyle(Brand.inkMuted)
                 #endif
@@ -113,6 +116,19 @@ struct AccountView: View {
                 LabeledContent("Email", value: StoreConfig.supportEmail)
                 LabeledContent("Hours", value: StoreConfig.hours)
                 Button("Open website") { openURL(AppConfig.siteURL) }
+            }
+
+            Section {
+                NavigationLink {
+                    StoreManagerView()
+                } label: {
+                    Label("Store manager", systemImage: "storefront")
+                }
+                .accessibilityIdentifier("storeManager")
+            } header: {
+                Text("For store staff")
+            } footer: {
+                Text("Sales, orders, stock and reviews. Uses the web admin password.")
             }
         }
         .scrollContentBackground(.hidden)
@@ -133,6 +149,7 @@ struct AccountView: View {
             NavigationStack { SignUpView() }
         }
         .task {
+            await auth.loadSocialProviders()
             if auth.isSignedIn {
                 await WishlistStore.shared.refresh()
             }

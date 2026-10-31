@@ -6,6 +6,16 @@ struct WelcomeView: View {
     var onSignIn: () -> Void
 
     var body: some View {
+        // Fits on one screen at normal sizes; scrolls when large text makes it taller.
+        ViewThatFits(in: .vertical) {
+            content
+            ScrollView { content }.scrollBounceBehavior(.basedOnSize)
+        }
+        .background(Brand.forest.ignoresSafeArea())
+        .ignoresSafeArea(edges: .top)
+    }
+
+    private var content: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .bottom) {
                 Image("WelcomeTextiles")
@@ -37,6 +47,7 @@ struct WelcomeView: View {
                         .font(.title2.weight(.bold))
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(StoreConfig.tagline)
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.8))
@@ -68,8 +79,6 @@ struct WelcomeView: View {
             .padding(.top, 56)
             .padding(.bottom, 12)
         }
-        .background(Brand.forest.ignoresSafeArea())
-        .ignoresSafeArea(edges: .top)
     }
 }
 
@@ -89,6 +98,7 @@ private struct WelcomeRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
                 Text(detail).font(.caption).foregroundStyle(.white.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .accessibilityElement(children: .combine)

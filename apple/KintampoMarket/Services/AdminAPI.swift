@@ -19,16 +19,16 @@ struct AdminAPI {
         _ = try await send(jsonRequest(path: "api/admin/logout", method: "POST"))
     }
 
-    func orders(queue: AdminQueue, status: String?, search: String) async throws -> [AdminOrder] {
+    func orders(queue: AdminQueue, status: String?, search: String, offset: Int = 0) async throws -> AdminOrderPage {
         var components = URLComponents(url: baseURL.appending(path: "api/admin/orders"), resolvingAgainstBaseURL: false)!
         var items = [URLQueryItem(name: "queue", value: queue.rawValue)]
+        if offset > 0 { items.append(URLQueryItem(name: "offset", value: String(offset))) }
         if let status { items.append(URLQueryItem(name: "status", value: status)) }
         let term = search.trimmingCharacters(in: .whitespacesAndNewlines)
         if !term.isEmpty { items.append(URLQueryItem(name: "q", value: term)) }
         components.queryItems = items
         let data = try await send(URLRequest(url: components.url!))
-        struct Response: Decodable { let orders: [AdminOrder] }
-        return try JSONDecoder().decode(Response.self, from: data).orders
+        return try JSONDecoder().decode(AdminOrderPage.self, from: data)
     }
 
     func order(id: String) async throws -> AdminOrderDetail {
@@ -44,6 +44,54 @@ struct AdminAPI {
             "note": note.trimmingCharacters(in: .whitespacesAndNewlines),
         ])
         _ = try await send(request)
+    }
+
+    func summary(range: ManagerRange) async throws -> ManagerSummary {
+        var components = URLComponents(url: baseURL.appending(path: "api/admin/summary"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "range", value: range.rawValue)]
+        let data = try await send(URLRequest(url: components.url!))
+        return try JSONDecoder().decode(ManagerSummary.self, from: data)
+    }
+
+    func products(search: String, filter: InventoryFilter, offset: Int = 0) async throws -> ManagerProductPage {
+        var components = URLComponents(url: baseURL.appending(path: "api/admin/products"), resolvingAgainstBaseURL: false)!
+        var items: [URLQueryItem] = []
+        let term = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !term.isEmpty { items.append(URLQueryItem(name: "q", value: term)) }
+        if filter != .all { items.append(URLQueryItem(name: "filter", value: filter.rawValue)) }
+        if offset > 0 { items.append(URLQueryItem(name: "offset", value: String(offset))) }
+        components.queryItems = items.isEmpty ? nil : items
+        let data = try await send(URLRequest(url: components.url!))
+        return try JSONDecoder().decode(ManagerProductPage.self, from: data)
+    }
+
+    /// Price, stock count and availability. A stock count also sets in-stock on the server (n > 0).
+    func updateProduct(id: String, price: Double, stockQuantity: Int?, inStock: Bool) async throws {
+        var request = jsonRequest(path: "api/admin/products/\(id)", method: "PATCH")
+        var body: [String: Any] = ["price": price, "in_stock": inStock]
+        body["stock_quantity"] = stockQuantity.map { $0 as Any } ?? NSNull()
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        _ = try await send(request)
+    }
+
+    func setInStock(id: String, inStock: Bool) async throws {
+        var request = jsonRequest(path: "api/admin/products/bulk-stock", method: "POST")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["ids": [id], "in_stock": inStock])
+        _ = try await send(request)
+    }
+
+    func pendingReviews() async throws -> [ManagerReview] {
+        let data = try await send(URLRequest(url: baseURL.appending(path: "api/admin/reviews")))
+        struct Response: Decodable { let reviews: [ManagerReview] }
+        return try JSONDecoder().decode(Response.self, from: data).reviews
+    }
+
+    func approveReview(id: String) async throws {
+        _ = try await send(jsonRequest(path: "api/admin/reviews/\(id)/approve", method: "POST"))
+    }
+
+    func deleteReview(id: String) async throws {
+        _ = try await send(jsonRequest(path: "api/admin/reviews/\(id)", method: "DELETE"))
     }
 
     private func jsonRequest(path: String, method: String) -> URLRequest {

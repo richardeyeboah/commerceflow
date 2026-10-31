@@ -113,12 +113,20 @@ final class MockHTTP: URLProtocol, @unchecked Sendable {
         MockHTTP.handler = { request in
             listQuery = request.url?.query
             return (200, """
-            {"queue":"all","orders":[{"id":"o-1","order_number":1001,"created_at":"2026-01-01T00:00:00Z","status":"ordered","total_amount":15.5,"shipping_method":"pickup"}]}
+            {"queue":"all","has_more":true,"counts":{"ordered":3,"processing":1},"orders":[{"id":"o-1","order_number":1001,"created_at":"2026-01-01T00:00:00Z","status":"ordered","total_amount":15.5,"shipping_method":"pickup"}]}
             """)
         }
         let queue = try await admin.orders(queue: .all, status: nil, search: " LQ-1001 ")
-        check(queue.first?.totalAmount == 15.5 && queue.first?.isPickup == true, "Admin queue must decode orders")
+        check(queue.orders.first?.totalAmount == 15.5 && queue.orders.first?.isPickup == true, "Admin queue must decode orders")
+        check(queue.hasMore && queue.counts?["ordered"] == 3, "Admin queue must decode paging and status counts")
         check(listQuery?.contains("q=LQ-1001") == true, "Admin search must send the trimmed term")
+        check(listQuery?.contains("offset") == false, "First admin page must not send an offset")
+        MockHTTP.handler = { request in
+            listQuery = request.url?.query
+            return (200, "{\"queue\":\"all\",\"orders\":[]}")
+        }
+        let older = try await admin.orders(queue: .all, status: nil, search: "", offset: 50)
+        check(listQuery?.contains("offset=50") == true && !older.hasMore && older.counts == nil, "Next admin page must send offset; old servers mean no more pages")
         MockHTTP.handler = { _ in (200, """
         {"order":{"id":"o-1","order_number":1001,"created_at":"2026-01-01T00:00:00Z","status":"processing","total_amount":15.5,"shipping_method":"pickup"},
          "items":[{"id":"i-1","product_id":null,"product_name":"Yam","product_price":5,"quantity":3}],
@@ -133,6 +141,40 @@ final class MockHTTP: URLProtocol, @unchecked Sendable {
         check(OrderStatusFlow.label("delivered", shippingMethod: "pickup") == "Picked up", "Collected pickup orders read as picked up")
         check(StoreConfig.matches("Lace", filter: StoreConfig.fashionGroup), "Fashion filter must include lace")
         check(!StoreConfig.matches("Spices", filter: StoreConfig.fashionGroup), "Fashion filter must exclude groceries")
+        var summaryQuery: String?
+        MockHTTP.handler = { request in
+            summaryQuery = request.url?.query
+            return (200, """
+            {"range":"7d","label":"Last 7 days","gross":250,"net_revenue":240,"orders":5,"units":12,"average_order":50,
+             "unpaid_count":0,"previous_gross":200,"previous_orders":4,"needs_action":3,"ready_for_pickup":1,
+             "pending_reviews":2,"out_of_stock":7,"low_stock":[{"id":"p-1","name":"Gari","stock_quantity":2,"image_url":null}],
+             "best_sellers":[{"product_id":"p-1","name":"Gari","units":6,"revenue":60}],
+             "recent_orders":[{"id":"o-1","order_number":1001,"created_at":"2026-01-01T00:00:00Z","status":"ordered","customer_name":"Ama","total_amount":15.5,"shipping_method":"pickup"}]}
+            """)
+        }
+        let summary = try await admin.summary(range: .week)
+        check(summaryQuery == "range=7d", "Dashboard must request the chosen period")
+        check(summary.grossChange == 25 && summary.lowStock.first?.stockQuantity == 2 && summary.recentOrders.count == 1,
+              "Dashboard must decode sales, change, stock alerts and recent orders")
+        MockHTTP.handler = { _ in (200, """
+        {"has_more":false,"products":[{"id":"p-1","name":"Gari","price":"4.50","category":"Flours","in_stock":true,"stock_quantity":null}]}
+        """) }
+        let stock = try await admin.products(search: "", filter: .all)
+        check(stock.products.first?.price == 4.5 && stock.products.first?.stockLabel == "In stock",
+              "Inventory must decode numeric-string prices and untracked stock")
+        var patchBody: [String: Any]?
+        MockHTTP.handler = { request in
+            patchBody = request.httpBodyStream.flatMap { stream -> [String: Any]? in
+                stream.open(); defer { stream.close() }
+                var data = Data(); var buffer = [UInt8](repeating: 0, count: 1024)
+                while stream.hasBytesAvailable { let n = stream.read(&buffer, maxLength: 1024); if n <= 0 { break }; data.append(buffer, count: n) }
+                return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            } ?? request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            return (200, "{}")
+        }
+        try await admin.updateProduct(id: "p-1", price: 5, stockQuantity: nil, inStock: false)
+        check(patchBody?["stock_quantity"] is NSNull && patchBody?["in_stock"] as? Bool == false,
+              "Untracked stock must send null so the in-stock switch is respected")
         check(StoreConfig.matches("Spices", filter: "Spices"), "Plain category filter must match exactly")
         let wa = StoreConfig.whatsAppURL(message: "Hi & hello")?.absoluteString ?? ""
         check(wa.hasPrefix("https://wa.me/1") && wa.contains("text=Hi%20%26%20hello"), "WhatsApp link must add +1 and encode the message")

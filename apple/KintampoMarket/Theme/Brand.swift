@@ -92,12 +92,18 @@ struct SectionHeader: View {
     let title: String
     var action: (() -> Void)? = nil
     var actionLabel = "See all"
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
+        // At accessibility sizes the action moves under the title so words don't break.
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
+        layout {
             Text(title)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(Brand.ink)
-            Spacer()
+            if !typeSize.isAccessibilitySize { Spacer() }
             if let action {
                 Button(actionLabel, action: action)
                     .font(.subheadline.weight(.medium))

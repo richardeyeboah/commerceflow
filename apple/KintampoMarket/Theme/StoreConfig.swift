@@ -23,6 +23,9 @@ enum StoreConfig {
 
     static let freeShippingThreshold = 120
 
+    /// Suggested in Shop search; only terms that match stocked products are shown.
+    static let popularSearches = ["fufu", "gari", "yam", "plantain", "palm oil", "shito", "malta", "shea butter", "kente", "suya"]
+
     /// `wa.me` chat link to the store with a prefilled message (US numbers get the +1 country code).
     static func whatsAppURL(message: String) -> URL? {
         var digits = AppConfig.whatsAppNumber.filter(\.isNumber)

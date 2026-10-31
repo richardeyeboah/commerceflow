@@ -16,39 +16,39 @@ struct WishlistView: View {
                 ContentUnavailableView("No saved items", systemImage: "heart", description: Text("Tap the heart on any product."))
             } else {
                 List {
-                    ForEach(wishlist.products) { product in
-                        NavigationLink(value: product) {
-                            HStack(spacing: 12) {
-                                CachedProductImage(url: product.primaryImageURL)
-                                    .frame(width: 56, height: 56)
-                                    .clipped()
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(product.name).font(.subheadline.weight(.medium)).lineLimit(2)
-                                    HStack(spacing: 6) {
-                                        Text(product.displayPrice).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.red)
-                                        Text(product.effectiveInStock ? "In stock" : "Out of stock")
-                                            .font(.caption)
-                                            .foregroundStyle(product.effectiveInStock ? Brand.success : Brand.inkMuted)
+                        ForEach(wishlist.products) { product in
+                            NavigationLink(value: product) {
+                                HStack(spacing: 12) {
+                                    CachedProductImage(url: product.primaryImageURL)
+                                        .frame(width: 56, height: 56)
+                                        .clipped()
+                                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(product.name).font(.subheadline.weight(.medium)).lineLimit(2)
+                                        HStack(spacing: 6) {
+                                            Text(product.displayPrice).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.red)
+                                            Text(product.effectiveInStock ? "In stock" : "Out of stock")
+                                                .font(.caption)
+                                                .foregroundStyle(product.effectiveInStock ? Brand.success : Brand.inkMuted)
+                                        }
                                     }
                                 }
+                                .padding(.vertical, 2)
                             }
-                            .padding(.vertical, 2)
-                        }
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                Task { await wishlist.toggle(product) }
-                            } label: { Label("Remove", systemImage: "heart.slash") }
-                        }
-                        .swipeActions(edge: .leading) {
-                            if product.effectiveInStock {
-                                Button {
-                                    CartStore.shared.add(product)
-                                } label: { Label("Add to cart", systemImage: "cart.badge.plus") }
-                                .tint(Brand.red)
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    Task { await wishlist.toggle(product) }
+                                } label: { Label("Remove", systemImage: "heart.slash") }
+                            }
+                            .swipeActions(edge: .leading) {
+                                if product.effectiveInStock {
+                                    Button {
+                                        CartStore.shared.add(product)
+                                    } label: { Label("Add to cart", systemImage: "cart.badge.plus") }
+                                    .tint(Brand.red)
+                                }
                             }
                         }
-                    }
                 }
             }
         }
@@ -405,6 +405,8 @@ struct OrdersView: View {
     @State private var orders: [TrackedOrder] = []
     @State private var loadError: String?
     @State private var loaded = false
+    @State private var hasMore = false
+    @State private var loadingMore = false
 
     var body: some View {
         Group {
@@ -425,26 +427,45 @@ struct OrdersView: View {
             } else if orders.isEmpty {
                 ContentUnavailableView("No orders yet", systemImage: "list.bullet.rectangle", description: Text("Your orders appear here after checkout."))
             } else {
-                List(orders, id: \.id) { order in
-                    NavigationLink {
-                        OrderDetailView(order: order)
-                    } label: {
-                        HStack(alignment: .top, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(order.displayNumber).font(.subheadline.weight(.semibold))
-                                Text(OrderStatusStyle.dateLabel(order.createdAt))
-                                    .font(.caption).foregroundStyle(Brand.inkMuted)
-                                OrderStatusBadge(status: order.status)
+                List {
+                    ForEach(orders, id: \.id) { order in
+                        NavigationLink {
+                            OrderDetailView(order: order)
+                        } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(order.displayNumber).font(.subheadline.weight(.semibold))
+                                    Text(OrderStatusStyle.dateLabel(order.createdAt))
+                                        .font(.caption).foregroundStyle(Brand.inkMuted)
+                                    OrderStatusBadge(status: order.status)
+                                }
+                                Spacer()
+                                if let total = order.totalAmount {
+                                    Text(String(format: "$%.2f", total))
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(Brand.ink)
+                                        .monospacedDigit()
+                                }
                             }
-                            Spacer()
-                            if let total = order.totalAmount {
-                                Text(String(format: "$%.2f", total))
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Brand.ink)
-                                    .monospacedDigit()
-                            }
+                            .padding(.vertical, 2)
                         }
-                        .padding(.vertical, 2)
+                        .onAppear {
+                            if order.id == orders.last?.id { Task { await loadMore() } }
+                        }
+                    }
+                    if hasMore {
+                        Button {
+                            Task { await loadMore() }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                if loadingMore { ProgressView() } else { Text("Show older orders") }
+                                Spacer()
+                            }
+                            .frame(minHeight: 44)
+                        }
+                        .disabled(loadingMore)
+                        .accessibilityIdentifier("ordersLoadMore")
                     }
                 }
             }
@@ -458,9 +479,21 @@ struct OrdersView: View {
         loadError = nil
         do {
             guard try await auth.validAccessToken() != nil else { orders = []; loaded = true; return }
-            orders = try await SupabaseService.shared.fetchMyOrders()
+            let page = try await SupabaseService.shared.fetchMyOrders()
+            orders = page.orders
+            hasMore = page.hasMore
         } catch { loadError = error.localizedDescription }
         loaded = true
+    }
+
+    private func loadMore() async {
+        guard hasMore, !loadingMore else { return }
+        loadingMore = true
+        defer { loadingMore = false }
+        guard let page = try? await SupabaseService.shared.fetchMyOrders(offset: orders.count) else { return }
+        let seen = Set(orders.map(\.id))
+        orders += page.orders.filter { !seen.contains($0.id) }
+        hasMore = page.hasMore
     }
 }
 
@@ -508,6 +541,7 @@ struct OrderStatusBadge: View {
 
 struct SignUpView: View {
     @Environment(\.dismiss) private var dismiss
+    @Bindable private var auth = AuthStore.shared
     @State private var firstName = ""
     @State private var lastName = ""
     @State private var email = ""
@@ -537,6 +571,13 @@ struct SignUpView: View {
 
     var body: some View {
         Form {
+            if auth.hasSocialSignIn {
+                Section {
+                    SocialSignInButtons(onSignedIn: { dismiss() })
+                } header: {
+                    Text("Quick sign-up")
+                }
+            }
             Section("Name") {
                 TextField("First name", text: $firstName)
                     #if os(iOS)
@@ -607,6 +648,7 @@ struct SignUpView: View {
         .scrollContentBackground(.hidden)
         .background(Brand.surface)
         .navigationTitle("Create account")
+        .task { await auth.loadSocialProviders() }
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif

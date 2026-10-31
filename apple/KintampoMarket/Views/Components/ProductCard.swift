@@ -5,17 +5,23 @@ struct ProductCard: View {
     var compact = false
     var showQuickAdd = true
     @State private var justAdded = false
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var lowStock: Int? {
         guard let qty = product.stockQuantity, qty > 0, qty <= 5 else { return nil }
         return qty
     }
 
+    private var imageHeight: CGFloat {
+        let base: CGFloat = compact ? 110 : 150
+        return typeSize.isAccessibilitySize ? base * 1.4 : base
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack(alignment: .topLeading) {
                 CachedProductImage(url: product.primaryImageURL)
-                    .frame(height: compact ? 110 : 150)
+                    .frame(height: imageHeight)
                     .frame(maxWidth: .infinity)
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -38,9 +44,9 @@ struct ProductCard: View {
                 Text(product.name)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Brand.ink)
-                    .lineLimit(2)
+                    .lineLimit(typeSize.isAccessibilitySize ? 4 : 2)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(minHeight: compact ? 0 : 38, alignment: .top)
+                    .frame(minHeight: compact || typeSize.isAccessibilitySize ? 0 : 38, alignment: .top)
                 if let pack = product.packLabel, !pack.isEmpty {
                     Text(pack).font(.caption2).foregroundStyle(Brand.inkMuted)
                 }
@@ -52,6 +58,8 @@ struct ProductCard: View {
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(Brand.red)
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                     if let unit = product.unitPriceLabel {
                         Text(unit).font(.caption2).foregroundStyle(Brand.inkMuted)
                     }

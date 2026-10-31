@@ -4,6 +4,7 @@ import SwiftUI
 
 /// Staff-facing order management — same data and rules as the web `/admin/orders` dashboard.
 struct AdminOrdersView: View {
+    var initialStatus: String? = nil
     @Bindable private var admin = AdminStore.shared
 
     var body: some View {
@@ -11,7 +12,7 @@ struct AdminOrdersView: View {
             if !admin.checked {
                 ProgressView()
             } else if admin.isSignedIn {
-                AdminOrderQueue()
+                AdminOrderQueue(status: initialStatus, queue: initialStatus == nil ? .needsAction : .all)
             } else {
                 AdminSignInView()
             }
@@ -24,7 +25,7 @@ struct AdminOrdersView: View {
     }
 }
 
-private struct AdminSignInView: View {
+struct AdminSignInView: View {
     @State private var password = ""
     @State private var errorMessage: String?
     @State private var isLoading = false
@@ -70,25 +71,44 @@ private struct AdminSignInView: View {
 }
 
 private struct AdminOrderQueue: View {
-    @State private var queue: AdminQueue = .needsAction
-    @State private var status: String?
+    @State var status: String?
+    @State var queue: AdminQueue = .needsAction
     @State private var search = ""
     @State private var orders: [AdminOrder] = []
+    @State private var hasMore = false
+    @State private var counts: [String: Int] = [:]
     @State private var loaded = false
+    @State private var loadingMore = false
     @State private var loadError: String?
+
+    private static let needsActionStatuses = ["ordered", "processing", "ready_for_pickup"]
+
+    private func countLabel(_ value: Int?) -> String {
+        guard let value else { return "" }
+        return " (\(value))"
+    }
 
     var body: some View {
         List {
             Section {
                 Picker("Queue", selection: $queue) {
-                    ForEach(AdminQueue.allCases) { Text($0.label).tag($0) }
+                    ForEach(AdminQueue.allCases) { item in
+                        let count = counts.isEmpty ? nil
+                            : item == .needsAction ? Self.needsActionStatuses.reduce(0) { $0 + (counts[$1] ?? 0) }
+                            : counts.values.reduce(0, +)
+                        Text(item.label + countLabel(count)).tag(item)
+                    }
                 }
                 .pickerStyle(.segmented)
                 Picker("Status", selection: $status) {
                     Text("Any status").tag(String?.none)
                     ForEach(OrderStatusFlow.all, id: \.self) { value in
-                        Text(OrderStatusFlow.label(value, shippingMethod: nil)).tag(Optional(value))
+                        Text(OrderStatusFlow.label(value, shippingMethod: nil) + countLabel(counts.isEmpty ? nil : counts[value] ?? 0))
+                            .tag(Optional(value))
                     }
+                }
+                if !counts.isEmpty {
+                    statusSummary
                 }
             }
 
@@ -105,13 +125,37 @@ private struct AdminOrderQueue: View {
                         .foregroundStyle(Brand.inkMuted)
                 }
             } else {
-                Section("\(orders.count) order\(orders.count == 1 ? "" : "s")") {
+                Section {
                     ForEach(orders) { order in
                         NavigationLink {
                             AdminOrderDetailView(orderID: order.id, onChange: { Task { await reload() } })
                         } label: {
                             AdminOrderRow(order: order)
                         }
+                        .onAppear {
+                            // Fetch the next page as the last row scrolls in.
+                            if order.id == orders.last?.id { Task { await loadMore() } }
+                        }
+                    }
+                    if hasMore {
+                        Button {
+                            Task { await loadMore() }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                if loadingMore { ProgressView() } else { Text("Load more orders") }
+                                Spacer()
+                            }
+                            .frame(minHeight: 44)
+                        }
+                        .disabled(loadingMore)
+                        .accessibilityIdentifier("adminLoadMore")
+                    }
+                } header: {
+                    Text("Showing \(orders.count)\(hasMore ? "+" : "") order\(orders.count == 1 ? "" : "s")")
+                } footer: {
+                    if !hasMore && orders.count > 10 {
+                        Text("That's every order in this view.")
                     }
                 }
             }
@@ -133,9 +177,44 @@ private struct AdminOrderQueue: View {
         .task { await reload() }
     }
 
+    /// Work waiting at each step, tappable to filter.
+    private var statusSummary: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(Self.needsActionStatuses, id: \.self) { value in
+                    let count = counts[value] ?? 0
+                    Button {
+                        status = status == value ? nil : value
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(count)")
+                                .font(.title3.weight(.bold))
+                                .monospacedDigit()
+                            Text(OrderStatusFlow.label(value, shippingMethod: nil))
+                                .font(.caption2.weight(.semibold))
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(OrderStatusStyle.color(for: value))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .frame(minWidth: 88, alignment: .leading)
+                        .background(OrderStatusStyle.color(for: value).opacity(status == value ? 0.22 : 0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(count) \(OrderStatusFlow.label(value, shippingMethod: nil))")
+                }
+            }
+        }
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+    }
+
     private func reload() async {
         do {
-            orders = try await AdminAPI.shared.orders(queue: queue, status: status, search: search)
+            let page = try await AdminAPI.shared.orders(queue: queue, status: status, search: search)
+            orders = page.orders
+            hasMore = page.hasMore
+            if let fresh = page.counts { counts = fresh }
             loadError = nil
         } catch AppError.unauthorized {
             AdminStore.shared.sessionExpired()
@@ -144,9 +223,25 @@ private struct AdminOrderQueue: View {
         }
         loaded = true
     }
+
+    private func loadMore() async {
+        guard hasMore, !loadingMore else { return }
+        loadingMore = true
+        defer { loadingMore = false }
+        do {
+            let page = try await AdminAPI.shared.orders(queue: queue, status: status, search: search, offset: orders.count)
+            let seen = Set(orders.map(\.id))
+            orders += page.orders.filter { !seen.contains($0.id) }
+            hasMore = page.hasMore && !page.orders.isEmpty
+        } catch AppError.unauthorized {
+            AdminStore.shared.sessionExpired()
+        } catch {
+            // Keep what is shown; the button stays so staff can retry.
+        }
+    }
 }
 
-private struct AdminOrderRow: View {
+struct AdminOrderRow: View {
     let order: AdminOrder
 
     var body: some View {
@@ -179,7 +274,7 @@ private struct AdminOrderRow: View {
     }
 }
 
-private struct AdminStatusBadge: View {
+struct AdminStatusBadge: View {
     let status: String
     let shippingMethod: String?
 
