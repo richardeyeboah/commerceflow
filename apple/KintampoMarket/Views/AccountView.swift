@@ -81,6 +81,17 @@ struct AccountView: View {
                 NavigationLink("Bundles") { BundlesView() }
                 NavigationLink("Recipes") { RecipesView() }
                 NavigationLink("Track order") { TrackOrderView() }
+                NavigationLink("Send feedback") { FeedbackView() }
+            }
+
+            Section {
+                NavigationLink {
+                    AdminOrdersView()
+                } label: {
+                    Label("Manage orders", systemImage: "list.clipboard")
+                }
+            } header: {
+                Text("Store staff")
             }
 
             Section("Store info") {

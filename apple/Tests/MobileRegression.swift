@@ -64,7 +64,7 @@ final class MockHTTP: URLProtocol, @unchecked Sendable {
         {"order":{"id":"order-1","order_number":1042,"created_at":"2026-01-01","status":"ordered"},"items":[],"logs":[]}
         """) }
         let order = try await api.trackOrder(id: "LQ-1042", email: "fixture@example.com")
-        check(order.id == "order-1", "Tracking must decode nested order")
+        check(order.0.id == "order-1", "Tracking must decode nested order")
         for json in ["{\"status\":\"processing\"}", "{\"status\":\"complete\"}", "{\"status\":\"unpaid\",\"paymentStatus\":\"processing\"}"] {
             let status = try decode(json, as: CheckoutStatusResult.self)
             check(status.confirmationMessage == nil, "Unconfirmed status must never signal success")
@@ -100,6 +100,37 @@ final class MockHTTP: URLProtocol, @unchecked Sendable {
         catch AppError.unauthorized { checks += 1 }
         let revoked = try await service.validSession()
         check(revoked == nil, "Revoked session must not remain signed in")
+        let admin = AdminAPI(session: session, baseURL: URL(string: "https://fixture.invalid")!)
+        var loginOrigin: String?
+        MockHTTP.handler = { request in
+            loginOrigin = request.value(forHTTPHeaderField: "Origin")
+            return (401, "{\"error\":\"Invalid password.\"}")
+        }
+        do { try await admin.login(password: "wrong"); preconditionFailure("Bad admin password must fail") }
+        catch AppError.unauthorized { checks += 1 }
+        check(loginOrigin == "https://fixture.invalid", "Admin writes must send Origin for the same-origin guard")
+        var listQuery: String?
+        MockHTTP.handler = { request in
+            listQuery = request.url?.query
+            return (200, """
+            {"queue":"all","orders":[{"id":"o-1","order_number":1001,"created_at":"2026-01-01T00:00:00Z","status":"ordered","total_amount":15.5,"shipping_method":"pickup"}]}
+            """)
+        }
+        let queue = try await admin.orders(queue: .all, status: nil, search: " LQ-1001 ")
+        check(queue.first?.totalAmount == 15.5 && queue.first?.isPickup == true, "Admin queue must decode orders")
+        check(listQuery?.contains("q=LQ-1001") == true, "Admin search must send the trimmed term")
+        MockHTTP.handler = { _ in (200, """
+        {"order":{"id":"o-1","order_number":1001,"created_at":"2026-01-01T00:00:00Z","status":"processing","total_amount":15.5,"shipping_method":"pickup"},
+         "items":[{"id":"i-1","product_id":null,"product_name":"Yam","product_price":5,"quantity":3}],
+         "logs":[{"id":"l-1","from_status":"ordered","to_status":"processing","changed_at":"2026-01-01T01:00:00Z","changed_by":"admin","note":null}]}
+        """) }
+        let detail = try await admin.order(id: "o-1")
+        check(detail.order.displayNumber == "LQ-1001" && detail.items.count == 1 && detail.logs.count == 1, "Admin order detail must decode")
+        check(OrderStatusFlow.next(after: "processing", shippingMethod: "pickup") == "ready_for_pickup", "Pickup flow must go to ready for pickup")
+        check(OrderStatusFlow.next(after: "processing", shippingMethod: "standard") == "shipped", "Shipping flow must go to shipped")
+        check(!OrderStatusFlow.choices(for: "pickup").contains("shipped"), "Pickup orders must not offer carrier statuses")
+        check(OrderStatusFlow.next(after: "delivered", shippingMethod: nil) == nil, "Finished orders have no next step")
+        check(OrderStatusFlow.label("delivered", shippingMethod: "pickup") == "Picked up", "Collected pickup orders read as picked up")
         print("PASS: \(checks) mobile regression checks (mock network; no live payments)")
     }
 }

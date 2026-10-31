@@ -43,6 +43,25 @@ struct APIClient {
         }
     }
 
+    func sendFeedback(name: String, email: String, category: String, message: String) async throws {
+        var request = URLRequest(url: baseURL.appending(path: "api/feedback"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(AppConfig.siteURL.absoluteString, forHTTPHeaderField: "Origin")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "name": name,
+            "email": email,
+            "category": category,
+            "message": message,
+            "pageUrl": "ios-app",
+        ])
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            throw AppError.network(message ?? "Could not send feedback.")
+        }
+    }
+
     func signUp(email: String, password: String, firstName: String, lastName: String, phone: String) async throws {
         var request = URLRequest(url: baseURL.appending(path: "api/auth/signup"))
         request.httpMethod = "POST"

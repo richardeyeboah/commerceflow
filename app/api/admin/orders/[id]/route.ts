@@ -10,6 +10,38 @@ import { assertSameOrigin } from '@/lib/security/same-origin'
 import { sendOrderStatusEmail } from '@/lib/email/send-order-emails'
 import { DELIVERY_PROOF_LABEL, type DeliveryProof } from '@/lib/orders/delivery-proof'
 
+/** Order + line items + status history for the native admin order screen. */
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const auth = await requireAdminApi()
+  if (!auth.ok) return auth.response
+
+  const { id } = await params
+  const [orderResult, itemsResult, logsResult] = await Promise.all([
+    supabaseAdmin.from('orders').select('*').eq('id', id).maybeSingle(),
+    supabaseAdmin.from('order_items').select('*').eq('order_id', id),
+    supabaseAdmin
+      .from('order_status_logs')
+      .select('id,from_status,to_status,changed_at,changed_by,note')
+      .eq('order_id', id)
+      .order('changed_at', { ascending: true }),
+  ])
+
+  if (orderResult.error) {
+    console.error('[admin/orders GET] lookup failed:', orderResult.error.message)
+    return NextResponse.json({ error: 'Could not load order.' }, { status: 500 })
+  }
+  if (!orderResult.data) return NextResponse.json({ error: 'Order not found.' }, { status: 404 })
+
+  return NextResponse.json({
+    order: { ...orderResult.data, status: normalizeOrderStatus(orderResult.data.status) },
+    items: itemsResult.data ?? [],
+    logs: logsResult.error ? [] : (logsResult.data ?? []),
+  })
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }

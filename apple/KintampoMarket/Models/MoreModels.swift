@@ -159,3 +159,111 @@ enum PickupSlotOption: String, CaseIterable, Identifiable {
         }
     }
 }
+
+// MARK: - Store manager
+
+enum AdminQueue: String, CaseIterable, Identifiable {
+    case needsAction = "needs_action"
+    case all
+    var id: String { rawValue }
+    var label: String { self == .needsAction ? "Needs action" : "All orders" }
+}
+
+/// Order row from `/api/admin/orders` and the `order` object of `/api/admin/orders/:id`.
+struct AdminOrder: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    let orderNumber: Int?
+    let createdAt: String
+    let status: String
+    let customerName: String?
+    let customerEmail: String?
+    let customerPhone: String?
+    let totalAmount: Double?
+    let shippingMethod: String?
+    let trackingNumber: String?
+    let paymentStatus: String?
+    let addressLine: String?
+    let city: String?
+    let state: String?
+    let postalCode: String?
+    let pickupContactName: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, status, city, state
+        case orderNumber = "order_number"
+        case createdAt = "created_at"
+        case customerName = "customer_name"
+        case customerEmail = "customer_email"
+        case customerPhone = "customer_phone"
+        case totalAmount = "total_amount"
+        case shippingMethod = "shipping_method"
+        case trackingNumber = "tracking_number"
+        case paymentStatus = "payment_status"
+        case addressLine = "address_line"
+        case postalCode = "postal_code"
+        case pickupContactName = "pickup_contact_name"
+    }
+
+    var displayNumber: String {
+        if let orderNumber { return "LQ-\(orderNumber)" }
+        return id.prefix(8).uppercased()
+    }
+
+    var isPickup: Bool { OrderStatusFlow.isPickup(shippingMethod) }
+
+    var addressSummary: String {
+        [addressLine, city, state, postalCode].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+}
+
+struct OrderStatusLog: Codable, Identifiable, Hashable, Sendable {
+    let id: String
+    let fromStatus: String?
+    let toStatus: String
+    let changedAt: String
+    let changedBy: String?
+    let note: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, note
+        case fromStatus = "from_status"
+        case toStatus = "to_status"
+        case changedAt = "changed_at"
+        case changedBy = "changed_by"
+    }
+}
+
+struct AdminOrderDetail: Decodable, Sendable {
+    let order: AdminOrder
+    let items: [OrderLineItem]
+    let logs: [OrderStatusLog]
+}
+
+/// Mirrors `lib/order-status.ts` so the app offers only statuses the API will accept.
+enum OrderStatusFlow {
+    static let shipping = ["ordered", "processing", "shipped", "out_for_delivery", "delivered"]
+    static let pickup = ["ordered", "processing", "ready_for_pickup", "delivered"]
+    static let all = ["ordered", "processing", "ready_for_pickup", "shipped", "out_for_delivery", "delivered", "cancelled"]
+
+    static func isPickup(_ shippingMethod: String?) -> Bool {
+        (shippingMethod ?? "").trimmingCharacters(in: .whitespaces).lowercased() == "pickup"
+    }
+
+    /// Linear steps plus `cancelled`, which applies to any order.
+    static func choices(for shippingMethod: String?) -> [String] {
+        (isPickup(shippingMethod) ? pickup : shipping) + ["cancelled"]
+    }
+
+    /// The step after `status`, or nil once the order is finished.
+    static func next(after status: String, shippingMethod: String?) -> String? {
+        let flow = isPickup(shippingMethod) ? pickup : shipping
+        guard let index = flow.firstIndex(of: status), index + 1 < flow.count else { return nil }
+        return flow[index + 1]
+    }
+
+    static func label(_ status: String, shippingMethod: String?) -> String {
+        if status == "delivered", isPickup(shippingMethod) { return "Picked up" }
+        if status == "out_for_delivery" { return "Out for Delivery" }
+        return status.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+}
