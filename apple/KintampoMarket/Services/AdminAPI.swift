@@ -108,6 +108,10 @@ struct AdminAPI {
         if http.statusCode == 401 || http.statusCode == 403 { throw AppError.unauthorized }
         guard (200...299).contains(http.statusCode) else {
             let message = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
+            // No JSON error on 404/405 means the website doesn't have this endpoint yet.
+            if message == nil, [404, 405].contains(http.statusCode) {
+                throw AppError.network("This store manager feature needs the latest website update. Use the web dashboard until it's deployed.")
+            }
             throw AppError.network(message ?? "Request failed (\(http.statusCode))")
         }
         return data
