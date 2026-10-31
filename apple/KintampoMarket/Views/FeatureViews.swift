@@ -178,7 +178,7 @@ struct CheckoutView: View {
                     LabeledContent("Subtotal") {
                         Text(String(format: "$%.2f", cart.subtotal)).fontWeight(.semibold).monospacedDigit()
                     }
-                    Text("Tax and \(shipping == .pickup ? "no shipping" : "shipping") are added on the payment screen.")
+                    Text(shipping == .pickup ? "Tax is added on the payment screen. Pickup has no shipping fee." : "Tax and shipping are added on the payment screen.")
                         .font(.caption).foregroundStyle(Brand.inkMuted)
                 }
 
